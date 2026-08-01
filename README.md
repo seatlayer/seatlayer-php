@@ -273,6 +273,8 @@ Full reference: [docs.seatlayer.io/server-sdk](https://docs.seatlayer.io/server-
 | Python (server) | [`seatlayer`](https://github.com/seatlayer/seatlayer-python) |
 | Java (server) | [`io.seatlayer:seatlayer-java`](https://github.com/seatlayer/seatlayer-java) |
 | Go (server) | [`github.com/seatlayer/seatlayer-go`](https://github.com/seatlayer/seatlayer-go) |
+| Ruby (server) | [`seatlayer`](https://github.com/seatlayer/seatlayer-ruby) |
+| .NET (server) | [`SeatLayer`](https://github.com/seatlayer/seatlayer-dotnet) |
 
 ## Development
 
