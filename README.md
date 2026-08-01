@@ -271,6 +271,7 @@ Full reference: [docs.seatlayer.io/server-sdk](https://docs.seatlayer.io/server-
 | Flutter | [`seatlayer_flutter`](https://github.com/seatlayer/seatlayer-flutter) |
 | Node.js (server) | [`@seatlayer/server`](https://github.com/seatlayer/seatlayer-node) |
 | Python (server) | [`seatlayer`](https://github.com/seatlayer/seatlayer-python) |
+| Java (server) | [`io.seatlayer:seatlayer-java`](https://github.com/seatlayer/seatlayer-java) |
 
 ## Development
 
