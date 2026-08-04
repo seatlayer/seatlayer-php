@@ -5,6 +5,18 @@
   "license": "MIT",
   "homepage": "https://docs.seatlayer.io/server-sdk/install/",
   "keywords": ["seatlayer", "reserved-seating", "seating-chart", "ticketing", "box-office"],
+  "authors": [
+    {
+      "name": "SeatLayer",
+      "email": "hello@seatlayer.io",
+      "homepage": "https://seatlayer.io"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/seatlayer/seatlayer-php/issues",
+    "source": "https://github.com/seatlayer/seatlayer-php",
+    "docs": "https://docs.seatlayer.io/server-sdk/install/"
+  },
   "require": {
     "php": ">=8.1",
     "ext-curl": "*",

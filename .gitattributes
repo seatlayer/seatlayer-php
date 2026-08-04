@@ -1,0 +1,15 @@
+# Keep development-only files out of the Composer dist tarball. Packagist builds
+# the dist from `git archive`, so anything not export-ignored here lands in every
+# consumer's vendor/seatlayer/seatlayer-php directory.
+#
+# src/, LICENSE, README.md, CHANGELOG.md and composer.json are deliberately NOT
+# ignored — they are the package.
+
+/.github            export-ignore
+/tests              export-ignore
+/.gitattributes     export-ignore
+/.gitignore         export-ignore
+/phpunit.xml        export-ignore
+/phpstan.neon       export-ignore
+/AGENTS.md          export-ignore
+/RELEASE.md         export-ignore
