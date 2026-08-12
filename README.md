@@ -1,5 +1,9 @@
 # SeatLayer PHP SDK
 
+[![CI](https://github.com/seatlayer/seatlayer-php/actions/workflows/ci.yml/badge.svg)](https://github.com/seatlayer/seatlayer-php/actions/workflows/ci.yml)
+[![Packagist](https://img.shields.io/packagist/v/seatlayer/seatlayer-php.svg)](https://packagist.org/packages/seatlayer/seatlayer-php)
+[![License: MIT](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE)
+
 Official PHP server SDK for the [SeatLayer](https://seatlayer.io) reserved-seating API.
 
 > **Server-side only.** This package authenticates with your secret key. Never expose it to a
