@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SeatLayer;
 
 use SeatLayer\Resources\Charts;
+use SeatLayer\Resources\Channels;
 use SeatLayer\Resources\Events;
 use SeatLayer\Resources\Inventory;
 use SeatLayer\Resources\Sessions;
@@ -20,6 +21,7 @@ use SeatLayer\Resources\Workspaces;
 final class SeatLayer
 {
     public readonly Charts $charts;
+    public readonly Channels $channels;
     public readonly Events $events;
     public readonly Inventory $inventory;
     public readonly Sessions $sessions;
@@ -45,6 +47,7 @@ final class SeatLayer
         $this->mode = $this->http->mode;
 
         $this->charts = new Charts($this->http);
+        $this->channels = new Channels($this->http);
         $this->events = new Events($this->http);
         $this->inventory = new Inventory($this->http);
         $this->sessions = new Sessions($this->http);

@@ -31,6 +31,7 @@ final class Inventory
     /**
      * @param list<string>|null $labels
      * @param list<array<string, mixed>>|null $selections
+     * @param list<string>|null $channelIds
      * @return array<string, mixed>
      */
     public function hold(
@@ -40,12 +41,18 @@ final class Inventory
         ?int $ttlMs = null,
         ?string $replaceHoldId = null,
         ?string $idempotencyKey = null,
+        ?array $channelIds = null,
+        ?bool $ignoreChannelRestrictions = null,
+        ?string $reason = null,
     ): array {
         $body = array_filter([
             'labels' => $labels,
             'selections' => $selections,
             'ttlMs' => $ttlMs,
             'replaceHoldId' => $replaceHoldId,
+            'channelIds' => $channelIds,
+            'ignoreChannelRestrictions' => $ignoreChannelRestrictions,
+            'reason' => $reason,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
@@ -59,6 +66,7 @@ final class Inventory
      * order get the same answer for the same inventory. `qty` above the server cap
      * is clamped, not rejected.
      *
+     * @param list<string>|null $channelIds
      * @return array<string, mixed>
      */
     public function holdBestAvailable(
@@ -68,12 +76,18 @@ final class Inventory
         ?string $zoneId = null,
         ?int $ttlMs = null,
         ?string $idempotencyKey = null,
+        ?array $channelIds = null,
+        ?bool $ignoreChannelRestrictions = null,
+        ?string $reason = null,
     ): array {
         $body = array_filter([
             'qty' => $qty,
             'categoryKey' => $categoryKey,
             'zoneId' => $zoneId,
             'ttlMs' => $ttlMs,
+            'channelIds' => $channelIds,
+            'ignoreChannelRestrictions' => $ignoreChannelRestrictions,
+            'reason' => $reason,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
@@ -86,6 +100,7 @@ final class Inventory
      * Prefer this over hold-then-book when payment is already taken: a failure
      * between two calls would strand inventory until the TTL expired.
      *
+     * @param list<string>|null $channelIds
      * @return array<string, mixed>
      */
     public function bookBestAvailable(
@@ -95,12 +110,18 @@ final class Inventory
         ?string $categoryKey = null,
         ?string $zoneId = null,
         ?string $idempotencyKey = null,
+        ?array $channelIds = null,
+        ?bool $ignoreChannelRestrictions = null,
+        ?string $reason = null,
     ): array {
         $body = array_filter([
             'qty' => $qty,
-            'bookingRef' => $bookingRef,
+            'bookingRef' => self::normaliseBookingRef($bookingRef),
             'categoryKey' => $categoryKey,
             'zoneId' => $zoneId,
+            'channelIds' => $channelIds,
+            'ignoreChannelRestrictions' => $ignoreChannelRestrictions,
+            'reason' => $reason,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
@@ -147,6 +168,7 @@ final class Inventory
 
     /**
      * @param list<string>|null $labels
+     * @param list<string>|null $channelIds
      * @return array<string, mixed>
      */
     public function book(
@@ -155,11 +177,17 @@ final class Inventory
         ?array $labels = null,
         ?string $bookingRef = null,
         ?string $idempotencyKey = null,
+        ?array $channelIds = null,
+        ?bool $ignoreChannelRestrictions = null,
+        ?string $reason = null,
     ): array {
         $body = array_filter([
             'holdId' => $holdId,
             'labels' => $labels,
-            'bookingRef' => $bookingRef,
+            'bookingRef' => self::normaliseBookingRef($bookingRef),
+            'channelIds' => $channelIds,
+            'ignoreChannelRestrictions' => $ignoreChannelRestrictions,
+            'reason' => $reason,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
@@ -179,7 +207,7 @@ final class Inventory
         /** @var array<string, mixed> */
         return (array) $this->http->post(
             $this->path($eventKey, '/box-book'),
-            ['labels' => $labels, 'bookingRef' => $bookingRef],
+            ['labels' => $labels, 'bookingRef' => self::normaliseBookingRef($bookingRef)],
             $idempotencyKey,
         );
     }
@@ -189,9 +217,12 @@ final class Inventory
      *
      * @param list<string> $labels
      */
-    public function unbook(string $eventKey, array $labels): mixed
+    public function unbook(string $eventKey, array $labels, string $bookingRef): mixed
     {
-        return $this->http->post($this->path($eventKey, '/unbook'), ['labels' => $labels]);
+        return $this->http->post($this->path($eventKey, '/unbook'), [
+            'labels' => $labels,
+            'bookingRef' => self::normaliseBookingRef($bookingRef),
+        ]);
     }
 
     /**
@@ -224,5 +255,47 @@ final class Inventory
     public function updateAvailability(string $eventKey, array $fields): mixed
     {
         return $this->http->post($this->path($eventKey, '/availability'), $fields);
+    }
+
+    /**
+     * One page of inventory booking lifecycles, newest first.
+     *
+     * @return array<string, mixed>
+     */
+    public function listBookings(
+        string $eventKey,
+        ?string $query = null,
+        ?string $state = null,
+        ?int $limit = null,
+        ?string $cursor = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get($this->path($eventKey, '/bookings'), [
+            'q' => $query,
+            'state' => $state,
+            'limit' => $limit,
+            'cursor' => $cursor,
+        ]);
+    }
+
+    /** @return array<string, mixed> */
+    public function retrieveBooking(string $eventKey, string $bookingRef): array
+    {
+        $ref = self::normaliseBookingRef($bookingRef);
+
+        /** @var array<string, mixed> */
+        return (array) $this->http->get($this->path($eventKey, '/bookings/' . HttpClient::encode($ref)));
+    }
+
+    private static function normaliseBookingRef(?string $bookingRef): string
+    {
+        $value = $bookingRef === null ? '' : trim($bookingRef);
+        if ($value === '') {
+            throw new \InvalidArgumentException(
+                'bookingRef is required and must be a non-empty stable reference.'
+            );
+        }
+
+        return $value;
     }
 }

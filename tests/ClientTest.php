@@ -328,6 +328,69 @@ final class ClientTest extends TestCase
         );
     }
 
+    public function testHoldCarriesChannelAuthority(): void
+    {
+        $sdk = $this->client([['status' => 200, 'body' => ['holdId' => 'h_1']]]);
+        $sdk->inventory->hold(
+            'ev_1',
+            labels: ['A-1'],
+            channelIds: ['ch_partner'],
+            ignoreChannelRestrictions: false,
+            reason: 'partner checkout',
+        );
+
+        self::assertSame([
+            'labels' => ['A-1'],
+            'channelIds' => ['ch_partner'],
+            'ignoreChannelRestrictions' => false,
+            'reason' => 'partner checkout',
+        ], json_decode((string) $this->call(0)['body'], true));
+    }
+
+    public function testCreatesOriginBoundBuyerAccessSession(): void
+    {
+        $sdk = $this->client([['status' => 201, 'body' => ['token' => 'bas_x']]]);
+        $sdk->channels->createBuyerAccessSession(
+            'ev/1',
+            includePublic: false,
+            allowedOrigin: 'https://partner.example',
+            channelIds: ['ch_1'],
+            maxQuantity: 4,
+            idempotencyKey: 'partner-order-42',
+        );
+
+        self::assertSame(
+            'https://api.seatlayer.io/v1/events/ev%2F1/buyer-access-sessions',
+            $this->call(0)['url'],
+        );
+        self::assertSame('partner-order-42', $this->call(0)['headers']['Idempotency-Key']);
+        self::assertSame([
+            'channelIds' => ['ch_1'],
+            'includePublic' => false,
+            'allowedOrigin' => 'https://partner.example',
+            'maxQuantity' => 4,
+        ], json_decode((string) $this->call(0)['body'], true));
+    }
+
+    public function testReadsBookingByTrimmedEncodedReference(): void
+    {
+        $sdk = $this->client([['status' => 200, 'body' => ['bookingRef' => 'order / 42']]]);
+        $sdk->inventory->retrieveBooking('ev_1', '  order / 42  ');
+
+        self::assertSame(
+            'https://api.seatlayer.io/v1/events/ev_1/bookings/order%20%2F%2042',
+            $this->call(0)['url'],
+        );
+    }
+
+    public function testRejectsBlankBookingReferenceBeforeRequest(): void
+    {
+        $sdk = $this->client([]);
+        $this->expectException(\InvalidArgumentException::class);
+        $this->expectExceptionMessageMatches('/bookingRef is required/');
+        $sdk->inventory->unbook('ev_1', ['A-1'], '   ');
+    }
+
     public function testSpentHoldIsAConflict(): void
     {
         $sdk = $this->client([['status' => 409, 'body' => ['error' => 'cannot_extend', 'reason' => 'expired']]]);
