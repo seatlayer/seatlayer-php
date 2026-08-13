@@ -101,6 +101,65 @@ final class ClientTest extends TestCase
         self::assertSame('https://api.seatlayer.io/v1/events/ev%2F..%2Fadmin', $this->call(0)['url']);
     }
 
+    public function testTemplateInstantiationUsesAnObjectBodyAndReplaysItsResponse(): void
+    {
+        $sdk = $this->client([
+            ['status' => 429, 'body' => ['error' => 'rate_limited'], 'headers' => ['retry-after' => '0']],
+            ['status' => 201, 'body' => ['meta' => ['id' => 'c_1']]],
+        ]);
+        $sdk->templates->instantiateTemplate('arena/standard');
+
+        self::assertCount(2, $this->calls);
+        self::assertSame(
+            'https://api.seatlayer.io/v1/templates/arena%2Fstandard/instantiate',
+            $this->call(0)['url'],
+        );
+        self::assertSame('{}', $this->call(0)['body']);
+        self::assertSame(
+            $this->call(0)['headers']['Idempotency-Key'],
+            $this->call(1)['headers']['Idempotency-Key'],
+        );
+    }
+
+    public function testTicketReleaseRoutesEncodeIdentifiersAndRemainSingleAttempt(): void
+    {
+        $sdk = $this->client([
+            ['status' => 200, 'body' => ['releases' => []]],
+            ['status' => 200, 'body' => ['releases' => []]],
+            ['status' => 429, 'body' => ['error' => 'rate_limited'], 'headers' => ['retry-after' => '0']],
+        ]);
+        $sdk->events->listTicketReleases('ev/1');
+        $sdk->events->updateTicketReleases('ev/1', [[
+            'id' => 'rel_1',
+            'name' => 'Early',
+            'price' => 2500,
+            'action' => 'buy',
+        ]]);
+
+        try {
+            $sdk->events->closeTicketRelease('ev/1', 'rel/1');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(3, $this->calls);
+            self::assertSame('GET', $this->call(0)['method']);
+            self::assertSame('https://api.seatlayer.io/v1/events/ev%2F1/releases', $this->call(0)['url']);
+            self::assertSame(
+                ['releases' => [[
+                    'id' => 'rel_1',
+                    'name' => 'Early',
+                    'price' => 2500,
+                    'action' => 'buy',
+                ]]],
+                json_decode((string) $this->call(1)['body'], true),
+            );
+            self::assertSame(
+                'https://api.seatlayer.io/v1/events/ev%2F1/releases/rel%2F1/close',
+                $this->call(2)['url'],
+            );
+            self::assertArrayNotHasKey('Idempotency-Key', $this->call(2)['headers']);
+        }
+    }
+
     public function testIdempotencyKeyOnlyOnHeaderReplayMutations(): void
     {
         $sdk = $this->client([

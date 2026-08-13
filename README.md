@@ -25,8 +25,8 @@ use SeatLayer\SeatLayer;
 
 $seatlayer = new SeatLayer(getenv('SEATLAYER_SECRET_KEY'));
 
-// 1. Provision a venue for a new organiser from one of your templates.
-$chart = $seatlayer->charts->copy('c_template_arena')['meta'];
+// 1. Provision a venue for a new organiser from a public template.
+$chart = $seatlayer->templates->instantiateTemplate('arena-standard')['meta'];
 $seatlayer->charts->publish($chart['id']);
 
 // 2. Create an event on it.
@@ -245,9 +245,9 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Four create
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Five create
 operations have the same retry behaviour with header replay: `charts->create`, `charts->copy`,
-`events->create`, and `workspaces->create`. They generate an `Idempotency-Key` when absent and reuse
+`templates->instantiateTemplate`, `events->create`, and `workspaces->create`. They generate an `Idempotency-Key` when absent and reuse
 that key across every attempt. You can supply a stable provisioning key instead:
 
 ```php
@@ -289,7 +289,8 @@ suite runs without a network.
 | Resource | Methods |
 | --- | --- |
 | `charts` | `list` `listAll` `create` `retrieve` `update` `delete` `copy` `archive` `unarchive` `publish` |
-| `events` | `list` `listAll` `create` `retrieve` `update` `delete` `updateChart` `close` `reopen` `archive` `retrieveHoldTtl` `updateHoldTtl` `retrieveReport` `retrieveLog` |
+| `templates` | `instantiateTemplate` |
+| `events` | `list` `listAll` `create` `retrieve` `update` `delete` `updateChart` `close` `reopen` `archive` `retrieveHoldTtl` `updateHoldTtl` `listTicketReleases` `updateTicketReleases` `closeTicketRelease` `retrieveReport` `retrieveLog` |
 | `channels` | `listChannels` `createChannel` `updateChannel` `updateAssignments` `listAllocation` `retrieveAccessPreview` `retrieveReport` `pause` `unpause` `archive` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` |
 | `inventory` | `hold` `holdBestAvailable` `bookBestAvailable` `extendHold` `retrieveHold` `release` `book` `boxOfficeBook` `unbook` `block` `unblock` `unblockAll` `retrieveAvailability` `updateAvailability` `listBookings` `retrieveBooking` |
 | `sessions` | `createManageSession` `revokeManageSession` `createDesignerSession` `revokeDesignerSession` |

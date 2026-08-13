@@ -88,13 +88,13 @@ final class HttpClient
 
     /**
      * @param array<string, mixed>|null $query
-     * @param array<string, mixed>|string|null $body
+     * @param array<string, mixed>|object|string|null $body
      */
     private function performRequest(
         string $method,
         string $path,
         ?array $query,
-        array|string|null $body,
+        array|object|string|null $body,
         bool $headerReplay,
         ?string $idempotencyKey,
         ?string $contentType = null,
@@ -189,6 +189,19 @@ final class HttpClient
         ?string $idempotencyKey = null,
     ): mixed {
         return $this->performRequest('POST', $path, null, $body, true, $idempotencyKey);
+    }
+
+    /**
+     * POST a JSON object with exact response replay, including `{}` when empty.
+     *
+     * @param array<string, mixed> $body
+     */
+    public function postObjectWithHeaderReplay(
+        string $path,
+        array $body = [],
+        ?string $idempotencyKey = null,
+    ): mixed {
+        return $this->performRequest('POST', $path, null, (object) $body, true, $idempotencyKey);
     }
 
     /** @param array<string, mixed> $body */
