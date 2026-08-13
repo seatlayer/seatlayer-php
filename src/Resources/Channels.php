@@ -118,7 +118,7 @@ final class Channels
         /** @var array<string, mixed> */
         return (array) $this->http->get($this->path($eventKey, '/preview'), [
             'channelIds' => $channelIds === null ? null : implode(',', $channelIds),
-            'includePublic' => $includePublic === null ? null : ($includePublic ? '1' : '0'),
+            'includePublic' => $includePublic === true ? '1' : null,
         ]);
     }
 
@@ -153,13 +153,16 @@ final class Channels
     public function archive(
         string $eventKey,
         string $channelId,
-        string $destination,
+        ?string $destination,
         ?string $reason = null,
     ): array {
+        $body = self::compact(['reason' => $reason]);
+        $body['destination'] = $destination;
+
         /** @var array<string, mixed> */
         return (array) $this->http->post(
             $this->path($eventKey, '/' . HttpClient::encode($channelId) . '/archive'),
-            self::compact(['destination' => $destination, 'reason' => $reason]),
+            $body,
         );
     }
 
@@ -201,14 +204,12 @@ final class Channels
     /** @return array<string, mixed> */
     public function listBuyerAccessSessions(
         string $eventKey,
-        ?string $state = null,
         ?int $limit = null,
-        ?string $cursor = null,
     ): array {
         /** @var array<string, mixed> */
         return (array) $this->http->get(
             '/v1/events/' . HttpClient::encode($eventKey) . '/buyer-access-sessions',
-            ['state' => $state, 'limit' => $limit, 'cursor' => $cursor],
+            ['limit' => $limit],
         );
     }
 
@@ -218,6 +219,78 @@ final class Channels
             '/v1/events/' . HttpClient::encode($eventKey)
             . '/buyer-access-sessions/' . HttpClient::encode($sessionId),
         );
+    }
+
+    /** @return array<string, mixed> */
+    public function createAccessLink(
+        string $eventKey,
+        string $channelId,
+        ?string $label = null,
+        ?bool $includePublic = null,
+        ?int $expiresAt = null,
+        ?int $maxRedemptions = null,
+        ?int $maxQuantity = null,
+        ?int $sessionTtlSeconds = null,
+        ?string $reason = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            $this->accessLinkPath($eventKey, $channelId),
+            self::compact([
+                'label' => $label,
+                'includePublic' => $includePublic,
+                'expiresAt' => $expiresAt,
+                'maxRedemptions' => $maxRedemptions,
+                'maxQuantity' => $maxQuantity,
+                'sessionTtlSeconds' => $sessionTtlSeconds,
+                'reason' => $reason,
+            ]),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function listAccessLinks(string $eventKey, string $channelId): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get($this->accessLinkPath($eventKey, $channelId));
+    }
+
+    /** @return array<string, mixed> */
+    public function rotateAccessLink(
+        string $eventKey,
+        string $channelId,
+        string $linkId,
+        bool $endActiveSessions,
+        ?string $reason = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            $this->accessLinkPath($eventKey, $channelId, '/' . HttpClient::encode($linkId) . '/rotate'),
+            self::compact(['endActiveSessions' => $endActiveSessions, 'reason' => $reason]),
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function revokeAccessLink(
+        string $eventKey,
+        string $channelId,
+        string $linkId,
+        bool $endActiveSessions = false,
+        ?string $reason = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->delete(
+            $this->accessLinkPath($eventKey, $channelId, '/' . HttpClient::encode($linkId)),
+            [
+                'endActiveSessions' => $endActiveSessions ? '1' : null,
+                'reason' => $reason,
+            ],
+        );
+    }
+
+    private function accessLinkPath(string $eventKey, string $channelId, string $suffix = ''): string
+    {
+        return $this->path($eventKey, '/' . HttpClient::encode($channelId) . '/access-links' . $suffix);
     }
 
     /**

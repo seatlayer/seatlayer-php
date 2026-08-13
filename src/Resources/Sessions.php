@@ -15,7 +15,20 @@ use SeatLayer\HttpClient;
 final class Sessions
 {
     /** @var list<string> */
-    public const CAPABILITIES = ['event:view', 'event:block', 'event:cancel', 'event:reports'];
+    public const CAPABILITIES = [
+        'event:view',
+        'event:block',
+        'event:cancel',
+        'event:reports',
+        'event:channels:view',
+        'event:channels:manage',
+        'event:orders:read',
+        'event:refund',
+        'event:tickets:send',
+        'event:door:view',
+        'event:door:checkin',
+        'event:boxoffice',
+    ];
 
     public function __construct(private readonly HttpClient $http)
     {
@@ -24,10 +37,9 @@ final class Sessions
     /**
      * Mint a manage-session token for the control room.
      *
-     * `capabilities` is required here even though the API defaults it. That default
-     * grants all four — including event:cancel, which un-books paid inventory.
-     * Granting the ability to reverse sales by forgetting an argument is not a
-     * default worth inheriting.
+     * `capabilities` is required here even though the API defaults omission to
+     * `event:view`. Making the grant explicit keeps the browser's authority
+     * reviewable and prevents future server defaults from changing client intent.
      *
      * @param list<string> $capabilities
      * @return array<string, mixed>
@@ -37,11 +49,12 @@ final class Sessions
         string $allowedOrigin,
         array $capabilities,
         ?int $expiresInSeconds = null,
+        ?string $workspaceId = null,
     ): array {
         if ($capabilities === []) {
             throw new \InvalidArgumentException(
-                'capabilities is required: pass the smallest set the page needs, e.g. ["event:view"]. '
-                . 'Omitting it server-side grants event:cancel, which can reverse paid bookings.'
+                'capabilities is required: pass the smallest explicit set the page needs, '
+                . 'e.g. ["event:view"].'
             );
         }
 
@@ -49,6 +62,7 @@ final class Sessions
             'allowedOrigin' => $allowedOrigin,
             'capabilities' => $capabilities,
             'expiresInSeconds' => $expiresInSeconds,
+            'workspaceId' => $workspaceId,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
@@ -70,6 +84,8 @@ final class Sessions
      * Requires a chart id that already exists — create or copy one first.
      *
      * @return array<string, mixed>
+     * @param array<string, bool>|null $safeModeOptions
+     * @param array<string, mixed>|null $features
      */
     public function createDesignerSession(
         string $workspaceId,
@@ -78,6 +94,9 @@ final class Sessions
         ?string $authority = null,
         ?string $mode = null,
         ?int $expiresInSeconds = null,
+        ?bool $canPublish = null,
+        ?array $safeModeOptions = null,
+        ?array $features = null,
     ): array {
         $body = array_filter([
             'workspaceId' => $workspaceId,
@@ -86,6 +105,9 @@ final class Sessions
             'authority' => $authority,
             'mode' => $mode,
             'expiresInSeconds' => $expiresInSeconds,
+            'canPublish' => $canPublish,
+            'safeModeOptions' => $safeModeOptions,
+            'features' => $features,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */

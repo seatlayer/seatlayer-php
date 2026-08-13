@@ -45,9 +45,17 @@ final class Webhooks
     }
 
     /** @return array<string, mixed> */
-    public function listDeliveries(string $webhookId): array
+    public function listDeliveries(
+        string $webhookId,
+        ?int $limit = null,
+        ?string $status = null,
+        ?int $before = null,
+    ): array
     {
         /** @var array<string, mixed> */
-        return (array) $this->http->get('/v1/webhooks/' . HttpClient::encode($webhookId) . '/deliveries');
+        return (array) $this->http->get(
+            '/v1/webhooks/' . HttpClient::encode($webhookId) . '/deliveries',
+            ['limit' => $limit, 'status' => $status, 'before' => $before],
+        );
     }
 }

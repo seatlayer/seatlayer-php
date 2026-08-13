@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Security/reliability:** Mutations now default to a single attempt. Automatic header-replay
+  retries are limited to chart create/copy, event create, and workspace create, preventing
+  transient failures from duplicating holds or best-available results and from issuing extra
+  show-once credentials.
+
 ## 0.2.0 — 2026-08-12
 
 - Added channel allocation management and origin-bound buyer access sessions.

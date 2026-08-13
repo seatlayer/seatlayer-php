@@ -136,14 +136,25 @@ final class Inventory
      * hands the seats to whoever is racing for them in between. A hold that is
      * gone, expired, or at its renewal cap answers 409 `cannot_extend`.
      *
+     * @param list<string>|null $channelIds
      * @return array<string, mixed>
      */
-    public function extendHold(string $eventKey, string $holdId, ?int $ttlMs = null): array
+    public function extendHold(
+        string $eventKey,
+        string $holdId,
+        ?int $ttlMs = null,
+        ?array $channelIds = null,
+        ?bool $ignoreChannelRestrictions = null,
+        ?string $reason = null,
+    ): array
     {
-        $body = array_filter(
-            ['holdId' => $holdId, 'ttlMs' => $ttlMs],
-            static fn (mixed $v): bool => $v !== null,
-        );
+        $body = array_filter([
+            'holdId' => $holdId,
+            'ttlMs' => $ttlMs,
+            'channelIds' => $channelIds,
+            'ignoreChannelRestrictions' => $ignoreChannelRestrictions,
+            'reason' => $reason,
+        ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
         return (array) $this->http->post($this->path($eventKey, '/extend'), $body);
@@ -230,9 +241,12 @@ final class Inventory
      *
      * @param list<string> $labels
      */
-    public function block(string $eventKey, array $labels): mixed
+    public function block(string $eventKey, array $labels, ?int $releaseAt = null): mixed
     {
-        return $this->http->post($this->path($eventKey, '/block'), ['labels' => $labels]);
+        return $this->http->post(
+            $this->path($eventKey, '/block'),
+            ['labels' => $labels, 'releaseAt' => $releaseAt],
+        );
     }
 
     /** @param list<string> $labels */
@@ -251,10 +265,10 @@ final class Inventory
         return $this->http->get($this->path($eventKey, '/availability'));
     }
 
-    /** @param array<string, mixed> $fields */
-    public function updateAvailability(string $eventKey, array $fields): mixed
+    /** @param array<string, mixed> $rules */
+    public function updateAvailability(string $eventKey, array $rules): mixed
     {
-        return $this->http->post($this->path($eventKey, '/availability'), $fields);
+        return $this->http->post($this->path($eventKey, '/availability'), ['rules' => $rules]);
     }
 
     /**

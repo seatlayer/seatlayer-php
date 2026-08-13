@@ -83,6 +83,22 @@ final class HttpClient
         ?array $body = null,
         ?string $idempotencyKey = null,
     ): mixed {
+        return $this->performRequest($method, $path, $query, $body, false, $idempotencyKey);
+    }
+
+    /**
+     * @param array<string, mixed>|null $query
+     * @param array<string, mixed>|string|null $body
+     */
+    private function performRequest(
+        string $method,
+        string $path,
+        ?array $query,
+        array|string|null $body,
+        bool $headerReplay,
+        ?string $idempotencyKey,
+        ?string $contentType = null,
+    ): mixed {
         $url = $this->baseUrl . $path;
         if ($query !== null) {
             $filtered = array_filter($query, static fn (mixed $v): bool => $v !== null);
@@ -99,26 +115,25 @@ final class HttpClient
 
         $payload = null;
         if ($body !== null) {
-            $payload = json_encode($body, JSON_THROW_ON_ERROR);
-            $headers['Content-Type'] = 'application/json';
+            $payload = is_string($body) ? $body : json_encode($body, JSON_THROW_ON_ERROR);
+            $headers['Content-Type'] = $contentType ?? 'application/json';
         }
 
-        // Every mutation carries one. A retried POST that creates a second hold is
-        // worse than a failed POST, and the caller cannot tell from outside — so
-        // the SDK, which knows it retried, is the right place to guarantee it.
-        if (!in_array($method, ['GET', 'HEAD'], true)) {
+        $read = in_array(strtoupper($method), ['GET', 'HEAD'], true);
+        if (!$read && ($headerReplay || $idempotencyKey !== null)) {
             $key = $idempotencyKey ?? self::uuidV4();
             self::assertValidIdempotencyKey($key);
             $headers['Idempotency-Key'] = $key;
         }
 
+        $attemptLimit = $read || $headerReplay ? $this->maxRetries : 1;
         $lastError = null;
-        for ($attempt = 0; $attempt < $this->maxRetries; $attempt++) {
+        for ($attempt = 0; $attempt < $attemptLimit; $attempt++) {
             try {
                 $response = $this->send($method, $url, $headers, $payload);
             } catch (ConnectionException $error) {
                 $lastError = $error;
-                if ($attempt < $this->maxRetries - 1) {
+                if ($attempt < $attemptLimit - 1) {
                     self::sleepSeconds(self::backoffSeconds($attempt, null));
                     continue;
                 }
@@ -139,7 +154,7 @@ final class HttpClient
             $errorBody = is_array($decoded) ? $decoded : [];
             $retryAfter = self::parseRetryAfter($response['headers'], $errorBody);
 
-            if (self::isRetryableStatus($status) && $attempt < $this->maxRetries - 1) {
+            if (self::isRetryableStatus($status) && $attempt < $attemptLimit - 1) {
                 self::sleepSeconds(self::backoffSeconds($attempt, $status === 429 ? $retryAfter : null));
                 continue;
             }
@@ -164,24 +179,45 @@ final class HttpClient
     /** @param array<string, mixed>|null $body */
     public function post(string $path, ?array $body = null, ?string $idempotencyKey = null): mixed
     {
-        return $this->request('POST', $path, null, $body, $idempotencyKey);
+        return $this->performRequest('POST', $path, null, $body, false, $idempotencyKey);
+    }
+
+    /** @param array<string, mixed>|null $body */
+    public function postWithHeaderReplay(
+        string $path,
+        ?array $body = null,
+        ?string $idempotencyKey = null,
+    ): mixed {
+        return $this->performRequest('POST', $path, null, $body, true, $idempotencyKey);
     }
 
     /** @param array<string, mixed> $body */
     public function put(string $path, array $body): mixed
     {
-        return $this->request('PUT', $path, null, $body);
+        return $this->performRequest('PUT', $path, null, $body, false, null);
+    }
+
+    /** Upload raw poster bytes without JSON/base64 transformation. */
+    public function putBinary(string $path, string $bytes, string $contentType): mixed
+    {
+        $allowed = ['image/png', 'image/jpeg', 'image/webp', 'application/octet-stream'];
+        if (!in_array($contentType, $allowed, true)) {
+            throw new \InvalidArgumentException('Unsupported poster content type: ' . $contentType);
+        }
+
+        return $this->performRequest('PUT', $path, null, $bytes, false, null, $contentType);
     }
 
     /** @param array<string, mixed> $body */
     public function patch(string $path, array $body): mixed
     {
-        return $this->request('PATCH', $path, null, $body);
+        return $this->performRequest('PATCH', $path, null, $body, false, null);
     }
 
-    public function delete(string $path): mixed
+    /** @param array<string, mixed>|null $query */
+    public function delete(string $path, ?array $query = null): mixed
     {
-        return $this->request('DELETE', $path);
+        return $this->performRequest('DELETE', $path, $query, null, false, null);
     }
 
     /** Percent-encode a path segment, including slashes. */

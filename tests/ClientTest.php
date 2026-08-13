@@ -101,17 +101,23 @@ final class ClientTest extends TestCase
         self::assertSame('https://api.seatlayer.io/v1/events/ev%2F..%2Fadmin', $this->call(0)['url']);
     }
 
-    public function testIdempotencyKeyOnMutationsOnly(): void
+    public function testIdempotencyKeyOnlyOnHeaderReplayMutations(): void
     {
-        $sdk = $this->client([['status' => 200, 'body' => []], ['status' => 201, 'body' => []]]);
+        $sdk = $this->client([
+            ['status' => 200, 'body' => []],
+            ['status' => 201, 'body' => []],
+            ['status' => 200, 'body' => ['holdId' => 'h_1']],
+        ]);
         $sdk->events->list();
         $sdk->events->create('c_1');
+        $sdk->inventory->hold('ev_1', ['A-1']);
 
         self::assertArrayNotHasKey('Idempotency-Key', $this->call(0)['headers']);
         self::assertMatchesRegularExpression(
             '/^[A-Za-z0-9._:-]{1,128}$/',
             $this->call(1)['headers']['Idempotency-Key'],
         );
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(2)['headers']);
     }
 
     public function testHonoursCallerSuppliedIdempotencyKey(): void
@@ -188,6 +194,60 @@ final class ClientTest extends TestCase
         }
     }
 
+    public function testStableErrorContractPrefersCodeAndPreservesEvidence(): void
+    {
+        $sdk = $this->client([[
+            'status' => 422,
+            'body' => [
+                'error' => 'validation_failed',
+                'code' => 'invalid_expiry',
+                'field' => 'expiresAt',
+            ],
+            'headers' => ['x-request-id' => 'req_contract'],
+        ]], maxRetries: 1);
+
+        try {
+            $sdk->channels->createAccessLink('ev_1', 'ch_1', expiresAt: 1);
+            self::fail('expected ValidationException');
+        } catch (ValidationException $error) {
+            self::assertSame(422, $error->status);
+            self::assertSame('invalid_expiry', $error->errorCode);
+            self::assertSame('expiresAt', $error->body['field']);
+            self::assertSame('req_contract', $error->requestId);
+        }
+    }
+
+    public function testNonJsonServerErrorMapsToBaseApiError(): void
+    {
+        $this->calls = [];
+        $transport = function (
+            string $method,
+            string $url,
+            array $headers,
+            ?string $payload,
+            float $timeout,
+        ): array {
+            $this->calls[] = ['method' => $method, 'url' => $url, 'headers' => $headers, 'body' => $payload];
+
+            return [
+                'status' => 502,
+                'body' => '<html>bad gateway</html>',
+                'headers' => ['x-request-id' => 'req_proxy'],
+            ];
+        };
+        $sdk = new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 1, 30.0, $transport);
+
+        try {
+            $sdk->events->retrieve('ev_1');
+            self::fail('expected SeatLayerException');
+        } catch (\SeatLayer\SeatLayerException $error) {
+            self::assertSame(502, $error->status);
+            self::assertSame('unknown_error', $error->errorCode);
+            self::assertSame([], $error->body);
+            self::assertSame('req_proxy', $error->requestId);
+        }
+    }
+
     // ---------- retry ----------
 
     public function testRetries429AndReusesIdempotencyKey(): void
@@ -204,6 +264,85 @@ final class ClientTest extends TestCase
             $this->call(0)['headers']['Idempotency-Key'],
             $this->call(1)['headers']['Idempotency-Key'],
         );
+    }
+
+    public function testReadRetriesRemainEnabled(): void
+    {
+        $sdk = $this->client([
+            ['status' => 429, 'body' => ['error' => 'rate_limited'], 'headers' => ['retry-after' => '0']],
+            ['status' => 200, 'body' => ['meta' => ['key' => 'ev_1']]],
+        ]);
+        $sdk->events->retrieve('ev_1');
+
+        self::assertCount(2, $this->calls);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(0)['headers']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(1)['headers']);
+    }
+
+    public function testBookingMutationIsSingleAttemptWithoutIdempotencyHeader(): void
+    {
+        $sdk = $this->client([[
+            'status' => 429,
+            'body' => ['error' => 'rate_limited'],
+            'headers' => ['retry-after' => '0'],
+        ]]);
+
+        try {
+            $sdk->inventory->bookBestAvailable('ev_1', 2, 'order-42');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(1, $this->calls);
+            self::assertArrayNotHasKey('Idempotency-Key', $this->call(0)['headers']);
+        }
+    }
+
+    public function testExplicitKeyOnUnsupportedMutationIsForwardedButDoesNotEnableRetries(): void
+    {
+        $sdk = $this->client([[
+            'status' => 429,
+            'body' => ['error' => 'rate_limited'],
+            'headers' => ['retry-after' => '0'],
+        ]]);
+
+        try {
+            $sdk->inventory->bookBestAvailable('ev_1', 2, 'order-42', idempotencyKey: 'retry-me');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(1, $this->calls);
+            self::assertSame('retry-me', $this->call(0)['headers']['Idempotency-Key']);
+        }
+    }
+
+    public function testRawMutationIsSingleAttemptAndExplicitKeyDoesNotEnableRetries(): void
+    {
+        $sdk = $this->client([
+            [
+                'status' => 429,
+                'body' => ['error' => 'rate_limited'],
+                'headers' => ['retry-after' => '0'],
+            ],
+            [
+                'status' => 429,
+                'body' => ['error' => 'rate_limited'],
+                'headers' => ['retry-after' => '0'],
+            ],
+        ]);
+
+        try {
+            $sdk->request('POST', '/v1/future-mutation', body: ['value' => 1]);
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(1, $this->calls);
+            self::assertArrayNotHasKey('Idempotency-Key', $this->call(0)['headers']);
+        }
+
+        try {
+            $sdk->request('POST', '/v1/future-mutation', body: ['value' => 1], idempotencyKey: 'retry-me');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(2, $this->calls);
+            self::assertSame('retry-me', $this->call(1)['headers']['Idempotency-Key']);
+        }
     }
 
     public function testDoesNotRetryA4xx(): void
@@ -289,8 +428,8 @@ final class ClientTest extends TestCase
     public function testRefusesToMintWithoutExplicitCapabilities(): void
     {
         $sdk = $this->client([]);
-        // The API would default this to all four including event:cancel — the
-        // ability to reverse paid bookings should never arrive by omission.
+        // The API defaults omission to view-only, but the SDK requires an explicit
+        // grant so browser authority stays reviewable at the call site.
         $this->expectException(\InvalidArgumentException::class);
         $this->expectExceptionMessageMatches('/capabilities is required/');
         $sdk->sessions->createManageSession('ev_1', 'https://box-office.example', []);
@@ -345,6 +484,126 @@ final class ClientTest extends TestCase
             'ignoreChannelRestrictions' => false,
             'reason' => 'partner checkout',
         ], json_decode((string) $this->call(0)['body'], true));
+    }
+
+    public function testExtendedInventoryContractsAreSentExactly(): void
+    {
+        $sdk = $this->client([
+            ['status' => 200, 'body' => ['ok' => true]],
+            ['status' => 200, 'body' => ['ok' => true]],
+            ['status' => 200, 'body' => ['ok' => true, 'holdTtlMs' => null]],
+        ]);
+
+        $sdk->inventory->extendHold(
+            'ev_1',
+            'h_1',
+            channelIds: ['ch_partner'],
+            ignoreChannelRestrictions: true,
+            reason: 'staff override',
+        );
+        $sdk->inventory->block('ev_1', ['A-1'], 1_800_000_000_000);
+        $sdk->events->updateHoldTtl('ev_1', null);
+
+        self::assertSame([
+            'holdId' => 'h_1',
+            'channelIds' => ['ch_partner'],
+            'ignoreChannelRestrictions' => true,
+            'reason' => 'staff override',
+        ], json_decode((string) $this->call(0)['body'], true));
+        self::assertSame(
+            ['labels' => ['A-1'], 'releaseAt' => 1_800_000_000_000],
+            json_decode((string) $this->call(1)['body'], true),
+        );
+        self::assertSame(
+            ['holdTtlMs' => null],
+            json_decode((string) $this->call(2)['body'], true),
+        );
+    }
+
+    public function testEventMetadataChartUpdateAndPosterContracts(): void
+    {
+        $sdk = $this->client([
+            ['status' => 201, 'body' => ['meta' => ['key' => 'ev_1']]],
+            ['status' => 200, 'body' => ['ok' => true, 'updated' => true, 'meta' => []]],
+            ['status' => 200, 'body' => ['meta' => ['key' => 'ev_1']]],
+            ['status' => 200, 'body' => ['meta' => ['key' => 'ev_1']]],
+        ]);
+
+        $sdk->events->create(
+            'c_1',
+            description: 'Gala',
+            endsAt: 1_800_000_000_000,
+            timezone: 'Europe/London',
+            locale: 'en-GB',
+            posterAssetId: 'asset_1',
+            mode: 'test',
+        );
+        $sdk->events->updateChart('ev_1', true, 'accept allocation drop');
+        $sdk->events->updatePoster('ev_1', "\x89PNG\r\n", 'image/png');
+        $sdk->events->deletePoster('ev_1');
+
+        $create = json_decode((string) $this->call(0)['body'], true);
+        self::assertSame('Gala', $create['description']);
+        self::assertSame('Europe/London', $create['timezone']);
+        self::assertSame('test', $create['mode']);
+        self::assertSame([
+            'acknowledgeDroppedAssignments' => true,
+            'reason' => 'accept allocation drop',
+        ], json_decode((string) $this->call(1)['body'], true));
+        self::assertSame("\x89PNG\r\n", $this->call(2)['body']);
+        self::assertSame('image/png', $this->call(2)['headers']['Content-Type']);
+        self::assertSame('DELETE', $this->call(3)['method']);
+    }
+
+    public function testHostedLinksSessionsAndDeliveryFiltersMatchPublicContract(): void
+    {
+        $sdk = $this->client([
+            ['status' => 201, 'body' => ['link' => [], 'capability' => 'x']],
+            ['status' => 201, 'body' => ['session' => ['id' => 'dse_1']]],
+            ['status' => 200, 'body' => ['deliveries' => []]],
+            ['status' => 200, 'body' => ['sessions' => []]],
+            ['status' => 200, 'body' => ['ok' => true, 'channel' => []]],
+        ]);
+
+        $linkResult = $sdk->channels->createAccessLink(
+            'ev/1',
+            'ch/1',
+            label: 'Partner',
+            includePublic: false,
+            maxRedemptions: 50,
+            sessionTtlSeconds: 900,
+        );
+        $designerResult = $sdk->sessions->createDesignerSession(
+            'ws_1',
+            'c_1',
+            'https://designer.example',
+            authority: 'publish',
+            mode: 'safe',
+            canPublish: true,
+            safeModeOptions: ['allowDeletingObjects' => false],
+            features: ['tables' => true],
+        );
+        $sdk->webhooks->listDeliveries('wh_1', 25, 'failed', 1_800_000_000_000);
+        $sdk->channels->listBuyerAccessSessions('ev_1', 20);
+        $sdk->channels->archive('ev_1', 'ch_1', null, 'return to public');
+
+        self::assertStringContainsString('/events/ev%2F1/channels/ch%2F1/access-links', $this->call(0)['url']);
+        self::assertSame(50, json_decode((string) $this->call(0)['body'], true)['maxRedemptions']);
+        $designerRequest = json_decode((string) $this->call(1)['body'], true);
+        self::assertTrue($designerRequest['canPublish']);
+        self::assertSame(['allowDeletingObjects' => false], $designerRequest['safeModeOptions']);
+        self::assertSame('x', $linkResult['capability']);
+        self::assertSame('dse_1', $designerResult['session']['id']);
+        self::assertStringContainsString('limit=25', $this->call(2)['url']);
+        self::assertStringContainsString('status=failed', $this->call(2)['url']);
+        self::assertSame(
+            'https://api.seatlayer.io/v1/events/ev_1/buyer-access-sessions?limit=20',
+            $this->call(3)['url'],
+        );
+        self::assertSame(
+            ['reason' => 'return to public', 'destination' => null],
+            json_decode((string) $this->call(4)['body'], true),
+        );
     }
 
     public function testCreatesOriginBoundBuyerAccessSession(): void

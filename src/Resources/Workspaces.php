@@ -29,7 +29,7 @@ final class Workspaces
         );
 
         /** @var array<string, mixed> */
-        return (array) $this->http->post('/v1/workspaces', $body, $idempotencyKey);
+        return (array) $this->http->postWithHeaderReplay('/v1/workspaces', $body, $idempotencyKey);
     }
 
     /** @return array<string, mixed> */

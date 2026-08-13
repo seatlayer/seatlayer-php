@@ -82,6 +82,12 @@ final class Events
         ?string $externalRef = null,
         ?string $currency = null,
         ?string $idempotencyKey = null,
+        ?string $description = null,
+        ?int $endsAt = null,
+        ?string $timezone = null,
+        ?string $locale = null,
+        ?string $posterAssetId = null,
+        ?string $mode = null,
     ): array {
         $body = array_filter([
             'chartId' => $chartId,
@@ -91,10 +97,16 @@ final class Events
             'venue' => $venue,
             'externalRef' => $externalRef,
             'currency' => $currency,
+            'description' => $description,
+            'endsAt' => $endsAt,
+            'timezone' => $timezone,
+            'locale' => $locale,
+            'posterAssetId' => $posterAssetId,
+            'mode' => $mode,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
-        return (array) $this->http->post('/v1/events', $body, $idempotencyKey);
+        return (array) $this->http->postWithHeaderReplay('/v1/events', $body, $idempotencyKey);
     }
 
     /** @return array<string, mixed> */
@@ -119,10 +131,45 @@ final class Events
         return $this->http->delete('/v1/events/' . HttpClient::encode($eventKey));
     }
 
-    /** Move a live event onto the latest published version of its chart. */
-    public function updateChart(string $eventKey): mixed
+    /**
+     * Upload raw PNG, JPEG, or WebP poster bytes (maximum 5 MiB).
+     *
+     * @return array<string, mixed>
+     */
+    public function updatePoster(
+        string $eventKey,
+        string $bytes,
+        string $contentType = 'application/octet-stream',
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->putBinary(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/poster',
+            $bytes,
+            $contentType,
+        );
+    }
+
+    /** @return array<string, mixed> */
+    public function deletePoster(string $eventKey): array
     {
-        return $this->http->post('/v1/events/' . HttpClient::encode($eventKey) . '/update-chart');
+        /** @var array<string, mixed> */
+        return (array) $this->http->delete('/v1/events/' . HttpClient::encode($eventKey) . '/poster');
+    }
+
+    /** Move a live event onto the latest published version of its chart. */
+    public function updateChart(
+        string $eventKey,
+        ?bool $acknowledgeDroppedAssignments = null,
+        ?string $reason = null,
+    ): mixed
+    {
+        return $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/update-chart',
+            array_filter([
+                'acknowledgeDroppedAssignments' => $acknowledgeDroppedAssignments,
+                'reason' => $reason,
+            ], static fn (mixed $value): bool => $value !== null),
+        );
     }
 
     /** Stop buyer sales. Existing holds keep their TTL. */
@@ -146,7 +193,7 @@ final class Events
         return $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/hold-ttl');
     }
 
-    public function updateHoldTtl(string $eventKey, int $holdTtlMs): mixed
+    public function updateHoldTtl(string $eventKey, ?int $holdTtlMs): mixed
     {
         return $this->http->post(
             '/v1/events/' . HttpClient::encode($eventKey) . '/hold-ttl',
@@ -159,8 +206,11 @@ final class Events
         return $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/report');
     }
 
-    public function retrieveLog(string $eventKey): mixed
+    public function retrieveLog(string $eventKey, ?int $limit = null, ?int $before = null): mixed
     {
-        return $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/log');
+        return $this->http->get(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/log',
+            ['limit' => $limit, 'before' => $before],
+        );
     }
 }

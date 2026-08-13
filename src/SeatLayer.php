@@ -56,14 +56,15 @@ final class SeatLayer
     }
 
     /** Dependency-aware readiness probe. */
-    public function ready(): mixed
+    public function ready(bool $deep = false): mixed
     {
-        return $this->http->get('/health/ready');
+        return $this->http->get('/health/ready', $deep ? ['deep' => '1'] : null);
     }
 
     /**
-     * Escape hatch for surface this SDK does not wrap yet. Carries the same auth,
-     * retries, idempotency and error mapping.
+     * Escape hatch for surface this SDK does not wrap yet. Reads retain transport
+     * retries. Raw mutations are sent once; a supplied Idempotency-Key is forwarded
+     * but never enables automatic retries.
      *
      * @param array<string, mixed>|null $query
      * @param array<string, mixed>|null $body

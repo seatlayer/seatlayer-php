@@ -95,7 +95,7 @@ final class Charts
         );
 
         /** @var array<string, mixed> */
-        return (array) $this->http->post('/v1/charts', $body, $idempotencyKey);
+        return (array) $this->http->postWithHeaderReplay('/v1/charts', $body, $idempotencyKey);
     }
 
     /** @return array<string, mixed> */
@@ -130,6 +130,18 @@ final class Charts
         return (array) $this->http->put('/v1/charts/' . HttpClient::encode($chartId), $body);
     }
 
+    /**
+     * Update chart metadata without replacing its document.
+     *
+     * @param array<string, mixed> $fields name, issues, and/or externalRef
+     * @return array<string, mixed>
+     */
+    public function updateMetadata(string $chartId, array $fields): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->put('/v1/charts/' . HttpClient::encode($chartId), $fields);
+    }
+
     public function delete(string $chartId): mixed
     {
         return $this->http->delete('/v1/charts/' . HttpClient::encode($chartId));
@@ -140,12 +152,24 @@ final class Charts
      *
      * @return array<string, mixed>
      */
-    public function copy(string $chartId, ?string $idempotencyKey = null): array
+    public function copy(
+        string $chartId,
+        ?string $idempotencyKey = null,
+        ?string $name = null,
+        ?string $externalRef = null,
+        ?string $workspaceId = null,
+    ): array
     {
+        $body = array_filter([
+            'name' => $name,
+            'externalRef' => $externalRef,
+            'workspaceId' => $workspaceId,
+        ], static fn (mixed $value): bool => $value !== null);
+
         /** @var array<string, mixed> */
-        return (array) $this->http->post(
+        return (array) $this->http->postWithHeaderReplay(
             '/v1/charts/' . HttpClient::encode($chartId) . '/duplicate',
-            null,
+            $body === [] ? null : $body,
             $idempotencyKey,
         );
     }
