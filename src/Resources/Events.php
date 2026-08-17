@@ -201,6 +201,44 @@ final class Events
         );
     }
 
+    /** @return array<string, mixed> */
+    public function listTicketReleases(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/releases');
+    }
+
+    /**
+     * Replace every ticket release for an event.
+     *
+     * This is deliberately single-attempt: unlike template instantiation, the
+     * route does not promise exact idempotent-response replay.
+     *
+     * @param list<array<string, mixed>> $releases
+     * @return array<string, mixed>
+     */
+    public function updateTicketReleases(string $eventKey, array $releases): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->put(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/releases',
+            ['releases' => $releases],
+        );
+    }
+
+    /**
+     * Close one release while preserving its audit provenance.
+     *
+     * @return array<string, mixed>
+     */
+    public function closeTicketRelease(string $eventKey, string $releaseId): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/releases/' . HttpClient::encode($releaseId) . '/close',
+        );
+    }
+
     public function retrieveReport(string $eventKey): mixed
     {
         return $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/report');

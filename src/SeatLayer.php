@@ -9,6 +9,7 @@ use SeatLayer\Resources\Channels;
 use SeatLayer\Resources\Events;
 use SeatLayer\Resources\Inventory;
 use SeatLayer\Resources\Sessions;
+use SeatLayer\Resources\Templates;
 use SeatLayer\Resources\Webhooks;
 use SeatLayer\Resources\Workspaces;
 
@@ -25,6 +26,7 @@ final class SeatLayer
     public readonly Events $events;
     public readonly Inventory $inventory;
     public readonly Sessions $sessions;
+    public readonly Templates $templates;
     public readonly Webhooks $webhooks;
     public readonly Workspaces $workspaces;
 
@@ -51,6 +53,7 @@ final class SeatLayer
         $this->events = new Events($this->http);
         $this->inventory = new Inventory($this->http);
         $this->sessions = new Sessions($this->http);
+        $this->templates = new Templates($this->http);
         $this->webhooks = new Webhooks($this->http);
         $this->workspaces = new Workspaces($this->http);
     }
