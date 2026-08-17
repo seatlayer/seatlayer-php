@@ -3,7 +3,7 @@
   "description": "Official PHP server SDK for the SeatLayer reserved-seating API.",
   "type": "library",
   "license": "MIT",
-  "homepage": "https://docs.seatlayer.io/server-sdk/install/",
+  "homepage": "https://seatlayer.io/",
   "keywords": ["seatlayer", "reserved-seating", "seating-chart", "ticketing", "box-office"],
   "authors": [
     {
