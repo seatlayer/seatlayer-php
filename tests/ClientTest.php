@@ -201,6 +201,57 @@ final class ClientTest extends TestCase
         self::assertSame('https://api.seatlayer.io/v1/charts?workspaceId=ws_1', $this->call(0)['url']);
     }
 
+    public function testMapsTheFullPerformanceGroupLifecycle(): void
+    {
+        $sdk = $this->client([
+            ['status' => 200, 'body' => ['performanceGroups' => [], 'nextCursor' => null]],
+            ['status' => 201, 'body' => ['performanceGroup' => []]],
+            ['status' => 200, 'body' => ['performanceGroup' => []]],
+            ['status' => 204, 'body' => []],
+            ['status' => 202, 'body' => ['lifecycleOperation' => ['terminal' => false]]],
+            ['status' => 200, 'body' => ['lifecycleOperation' => ['terminal' => true]]],
+            ['status' => 200, 'body' => ['lifecycleOperation' => []]],
+            ['status' => 201, 'body' => ['token' => 'bsg_secret']],
+            ['status' => 200, 'body' => ['sessions' => []]],
+            ['status' => 200, 'body' => ['ok' => true]],
+            ['status' => 200, 'body' => ['hold' => []]],
+            ['status' => 202, 'body' => ['booking' => ['state' => 'book_pending']]],
+            ['status' => 200, 'body' => ['booking' => ['state' => 'booked']]],
+        ]);
+        $groupKey = 'pg_a/b';
+
+        $sdk->performanceGroups->list(workspaceId: 'ws_1', state: 'draft');
+        $sdk->performanceGroups->create('Weekend run', ['ev_1', 'ev_2'], idempotencyKey: 'weekend-run-1');
+        $sdk->performanceGroups->retrieve($groupKey);
+        $sdk->performanceGroups->delete($groupKey);
+        $sdk->performanceGroups->activate($groupKey, 1);
+        $sdk->performanceGroups->close($groupKey, 2);
+        $sdk->performanceGroups->retrieveLifecycle($groupKey, 'pga_1');
+        $sdk->performanceGroups->createBuyerAccessSession($groupKey, 'https://tickets.example.test', true);
+        $sdk->performanceGroups->listBuyerAccessSessions($groupKey, 25);
+        $sdk->performanceGroups->revokeBuyerAccessSession($groupKey, 'pgbs_1');
+        $sdk->performanceGroups->retrieveHold($groupKey, 'pgh_1');
+        $sdk->performanceGroups->bookHold($groupKey, 'pgh_1', 'book_1', 'order_1');
+        $sdk->performanceGroups->retrieveBooking($groupKey, 'book_1');
+
+        $base = 'https://api.seatlayer.io/v1/performance-groups/pg_a%2Fb';
+        self::assertSame('https://api.seatlayer.io/v1/performance-groups?workspaceId=ws_1&state=draft', $this->call(0)['url']);
+        self::assertSame('weekend-run-1', $this->call(1)['headers']['Idempotency-Key']);
+        self::assertSame($base, $this->call(2)['url']);
+        self::assertSame('DELETE', $this->call(3)['method']);
+        self::assertSame($base . '/activate', $this->call(4)['url']);
+        self::assertSame($base . '/close', $this->call(5)['url']);
+        self::assertSame($base . '/lifecycle/pga_1', $this->call(6)['url']);
+        self::assertSame($base . '/buyer-access-sessions', $this->call(7)['url']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(7)['headers']);
+        self::assertSame($base . '/buyer-access-sessions?limit=25', $this->call(8)['url']);
+        self::assertSame($base . '/buyer-access-sessions/pgbs_1', $this->call(9)['url']);
+        self::assertSame($base . '/holds/pgh_1', $this->call(10)['url']);
+        self::assertSame($base . '/holds/pgh_1/book', $this->call(11)['url']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(11)['headers']);
+        self::assertSame($base . '/bookings/book_1', $this->call(12)['url']);
+    }
+
     // ---------- errors ----------
 
     public function testModeMismatchIsSelfExplaining(): void
