@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.5.0 — 2026-08-21
+
+- Added `performanceGroups`, the trusted server resource for fixed two-to-eight
+  performance runs. It creates and activates groups, mints one-time browser
+  access, retrieves authoritative group holds, and confirms bookings with
+  stable action and order references. Browser-only group routes remain outside
+  this secret-key SDK.
+
 - Added `templates->instantiateTemplate()` and the ticket-release lifecycle on
   `events` (`listTicketReleases`, `updateTicketReleases`, and
   `closeTicketRelease`). Template instantiation sends `{}` when no overrides
