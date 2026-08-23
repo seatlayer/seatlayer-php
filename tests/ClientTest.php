@@ -101,6 +101,52 @@ final class ClientTest extends TestCase
         self::assertSame('https://api.seatlayer.io/v1/events/ev%2F..%2Fadmin', $this->call(0)['url']);
     }
 
+    public function testEventConfigurationBindingRoutesAndBodies(): void
+    {
+        $binding = [
+            'configuration' => ['id' => 'ec_touring', 'version' => 3],
+            'revision' => 7,
+            'changedBy' => 'api-key:key_1',
+            'changedAt' => 123,
+            'audit' => [[
+                'id' => 'eca_1',
+                'from' => null,
+                'to' => ['id' => 'ec_touring', 'version' => 3],
+                'revision' => 7,
+                'actor' => 'api-key:key_1',
+                'createdAt' => 123,
+            ]],
+        ];
+        $sdk = $this->client([
+            ['status' => 200, 'body' => $binding],
+            ['status' => 200, 'body' => $binding],
+            ['status' => 200, 'body' => [...$binding, 'configuration' => null, 'revision' => 8]],
+        ]);
+
+        $retrieved = $sdk->events->retrieveConfigurationBinding('ev / main');
+        self::assertSame(['id' => 'ec_touring', 'version' => 3], $retrieved['audit'][0]['to']);
+        $sdk->events->updateConfigurationBinding(
+            'ev / main',
+            6,
+            ['id' => 'ec_touring', 'version' => 3],
+        );
+        $sdk->events->updateConfigurationBinding('ev / main', 7, null);
+
+        $url = 'https://api.seatlayer.io/v1/events/ev%20%2F%20main/event-configuration';
+        self::assertSame([$url, $url, $url], array_column($this->calls, 'url'));
+        self::assertSame('GET', $this->call(0)['method']);
+        self::assertSame([
+            'expectedRevision' => 6,
+            'configuration' => ['id' => 'ec_touring', 'version' => 3],
+        ], json_decode((string) $this->call(1)['body'], true));
+        self::assertSame([
+            'expectedRevision' => 7,
+            'configuration' => null,
+        ], json_decode((string) $this->call(2)['body'], true));
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(1)['headers']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->call(2)['headers']);
+    }
+
     public function testTemplateInstantiationUsesAnObjectBodyAndReplaysItsResponse(): void
     {
         $sdk = $this->client([

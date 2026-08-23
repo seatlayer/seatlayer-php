@@ -116,6 +116,42 @@ final class Events
         return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey));
     }
 
+    /** Read the Event's exact immutable configuration binding and audit history.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveConfigurationBinding(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/event-configuration',
+        );
+    }
+
+    /**
+     * Bind an exact published version, or pass null to detach.
+     *
+     * This compare-and-set mutation remains single-attempt because the public
+     * operation does not promise exact response replay.
+     *
+     * @param array{id: string, version: int}|null $configuration
+     * @return array<string, mixed>
+     */
+    public function updateConfigurationBinding(
+        string $eventKey,
+        int $expectedRevision,
+        ?array $configuration,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->put(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/event-configuration',
+            [
+                'expectedRevision' => $expectedRevision,
+                'configuration' => $configuration,
+            ],
+        );
+    }
+
     /**
      * @param array<string, mixed> $fields
      * @return array<string, mixed>
