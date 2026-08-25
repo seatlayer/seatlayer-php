@@ -4,7 +4,7 @@
   "type": "library",
   "license": "MIT",
   "homepage": "https://seatlayer.io/",
-  "keywords": ["seatlayer", "reserved-seating", "seating-chart", "ticketing", "box-office"],
+  "keywords": ["seatlayer", "seating-chart", "seat-map", "reserved-seating", "seat-booking", "ticketing", "event-ticketing", "box-office", "server-sdk", "php"],
   "authors": [
     {
       "name": "SeatLayer",
