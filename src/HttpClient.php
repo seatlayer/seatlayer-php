@@ -182,6 +182,16 @@ final class HttpClient
         return $this->performRequest('POST', $path, null, $body, false, $idempotencyKey);
     }
 
+    /**
+     * POST a JSON object without automatic retries, including `{}` when empty.
+     *
+     * @param array<string, mixed> $body
+     */
+    public function postObject(string $path, array $body = [], ?string $idempotencyKey = null): mixed
+    {
+        return $this->performRequest('POST', $path, null, (object) $body, false, $idempotencyKey);
+    }
+
     /** @param array<string, mixed>|null $body */
     public function postWithHeaderReplay(
         string $path,
@@ -202,6 +212,20 @@ final class HttpClient
         ?string $idempotencyKey = null,
     ): mixed {
         return $this->performRequest('POST', $path, null, (object) $body, true, $idempotencyKey);
+    }
+
+    /**
+     * Execute a non-POST mutation backed by the API's exact response replay.
+     *
+     * @param array<string, mixed>|null $body
+     */
+    public function mutationWithHeaderReplay(
+        string $method,
+        string $path,
+        ?array $body = null,
+        ?string $idempotencyKey = null,
+    ): mixed {
+        return $this->performRequest($method, $path, null, $body, true, $idempotencyKey);
     }
 
     /** @param array<string, mixed> $body */
