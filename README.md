@@ -11,9 +11,9 @@ allocations, and webhooks through one typed ticketing API client.
 
 [`seatlayer/seatlayer-php` on Packagist](https://packagist.org/packages/seatlayer/seatlayer-php) ·
 [SeatLayer server SDK documentation](https://docs.seatlayer.io/server-sdk/install/) ·
-[SeatLayer reserved-seating platform](https://seatlayer.io/) ·
+[SeatLayer developer platform](https://seatlayer.io/developers/) ·
 [SeatLayer JavaScript seat map SDK](https://www.npmjs.com/package/@seatlayer/js) ·
-[Server API reference](https://docs.seatlayer.io/server-api/)
+[Server API reference](https://docs.seatlayer.io/server-api/events/)
 
 > **Server-side only.** This package authenticates with your secret key. Never expose it to a
 > browser or anything a ticket buyer can reach — browser surfaces get short-lived, origin-bound
@@ -48,6 +48,35 @@ $seatlayer->inventory->book($event['key'], holdId: $held['holdId'], bookingRef: 
 ```
 
 ## Test vs live
+
+## Fixed Renewable Seasons (unpublished candidate)
+
+The source candidate exposes all 48 trusted organizer operations through
+`$seatlayer->seasons`. It is not part of the currently published Packagist
+release and does not make a production-support claim.
+
+After the test hold/book/cancel journey and matching webhook deliveries,
+`validateSeasonBuyerRehearsal($seasonKey)` sends no evidence body; SeatLayer
+discovers the retained chain automatically. Retrieved Season holds contain
+inventory identity, not an authoritative amount—your platform owns package
+price, payment, order, tax, refunds, benefits, and ticket or pass delivery.
+
+```php
+$checked = $seatlayer->seasons->validateSeason([
+    'sourcePerformanceGroupKeys' => ['pg_subscription_run'],
+]);
+$draft = $seatlayer->seasons->createSeason([
+    'name' => '2027 subscription',
+    'sourcePerformanceGroupKeys' => ['pg_subscription_run'],
+], 'season-create-2027')['season'];
+$activation = $seatlayer->seasons->activateSeason($draft['key'], $draft['revision']);
+```
+
+Treat `202` as accepted work and poll `retrieveSeasonLifecycle()` with the
+returned operation identity. Buyer-session minting and domain-exact booking,
+cancellation, and renewal actions remain single-attempt; only declared
+header-replay catalogue mutations retry automatically.
+
 
 Keys carry their own mode. `sk_test_…` keys can only touch test-mode events and `sk_live_…` only
 live ones; crossing them returns `403 mode_mismatch`, surfaced as `AuthException` with
