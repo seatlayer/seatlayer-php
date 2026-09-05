@@ -4,13 +4,13 @@
 [![Packagist](https://img.shields.io/packagist/v/seatlayer/seatlayer-php.svg)](https://packagist.org/packages/seatlayer/seatlayer-php)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE)
 
-The official SeatLayer PHP server SDK — the trusted side of a reserved-seating
-integration. Inspect what a hold really contains, price from server-owned seating-chart
-data, and book with a stable `bookingRef`, while managing charts, events, inventory,
-allocations, and webhooks through one typed ticketing API client.
+SeatLayer's official PHP server SDK is the trusted side of its reserved seating and seat booking
+API. Inspect what a hold really contains, price from server-owned seating-chart data, and book
+with a stable `bookingRef`, while managing charts, events, inventory, allocations, and webhooks
+through one typed ticketing API client.
 
 [`seatlayer/seatlayer-php` on Packagist](https://packagist.org/packages/seatlayer/seatlayer-php) ·
-[SeatLayer server SDK documentation](https://docs.seatlayer.io/server-sdk/install/) ·
+[PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/) ·
 [SeatLayer developer platform](https://seatlayer.io/developers/) ·
 [SeatLayer JavaScript seat map SDK](https://www.npmjs.com/package/@seatlayer/js) ·
 [Server API reference](https://docs.seatlayer.io/server-api/events/)
@@ -19,7 +19,7 @@ allocations, and webhooks through one typed ticketing API client.
 > browser or anything a ticket buyer can reach — browser surfaces get short-lived, origin-bound
 > tokens that you mint here.
 
-## Install
+## Install the PHP seat booking SDK
 
 ```bash
 composer require seatlayer/seatlayer-php
@@ -35,7 +35,8 @@ use SeatLayer\SeatLayer;
 $seatlayer = new SeatLayer(getenv('SEATLAYER_SECRET_KEY'));
 
 // 1. Provision a venue for a new organiser from a public template.
-$chart = $seatlayer->templates->instantiateTemplate('arena-standard')['meta'];
+// Replace this placeholder with a template id from your catalog.
+$chart = $seatlayer->templates->instantiateTemplate('your-published-template')['meta'];
 $seatlayer->charts->publish($chart['id']);
 
 // 2. Create an event on it.
@@ -46,8 +47,6 @@ $held = $seatlayer->inventory->holdBestAvailable($event['key'], qty: 4);
 // … take payment against $held['items'], which carry authoritative prices …
 $seatlayer->inventory->book($event['key'], holdId: $held['holdId'], bookingRef: 'order-8842');
 ```
-
-## Test vs live
 
 ## Fixed Renewable Seasons
 
@@ -76,6 +75,7 @@ returned operation identity. Buyer-session minting and domain-exact booking,
 cancellation, and renewal actions remain single-attempt; only declared
 header-replay catalogue mutations retry automatically.
 
+## Test vs live
 
 Keys carry their own mode. `sk_test_…` keys can only touch test-mode events and `sk_live_…` only
 live ones; crossing them returns `403 mode_mismatch`, surfaced as `AuthException` with
@@ -88,15 +88,23 @@ if (getenv('APP_ENV') === 'production' && $seatlayer->mode !== 'live') {
 }
 ```
 
-## The two selling flows
+## Book reserved seats from PHP
 
 **Buyer picks seats in the browser.** Your frontend holds them; your backend confirms the price and
 books. Never price from what the browser sent you — `retrieveHold` is authoritative.
 
 ```php
 $hold = $seatlayer->inventory->retrieveHold($eventKey, $holdId);
-$total = array_sum(array_column($hold['items'], 'unitPrice'));
-// … charge $total in $hold['currency'] …
+$currencies = array_values(array_unique(array_column($hold['items'], 'currency')));
+if (count($currencies) !== 1) {
+    throw new RuntimeException('A hold must use one currency.');
+}
+$currency = $currencies[0];
+$total = array_sum(array_map(
+    static fn (array $item) => $item['unitPrice'] * ($item['quantity'] ?? 1),
+    $hold['items'],
+));
+// … charge $total in $currency …
 $seatlayer->inventory->book($eventKey, holdId: $holdId, bookingRef: $charge->id);
 ```
 
@@ -198,9 +206,11 @@ $session = $seatlayer->sessions->createManageSession(
 );
 ```
 
-`capabilities` is **required** by this SDK even though the API defaults it. That default grants all
-four including `event:cancel`, which reverses paid bookings — not something that should arrive by
-forgetting an argument. Grant the smallest set the page needs.
+`capabilities` is **required** by this SDK even though the raw API safely defaults an omitted list
+to view-only (`event:view`). Keeping the argument required makes browser authority visible at every
+call site. Grant the smallest set the page needs. For Platform/SDK events, `event:cancel` returns a
+booking's inventory to sale but does not move gateway money; eligible Managed Ticketing refunds use
+the separate `event:refund` capability.
 
 The same pattern embeds the Designer in your own UI:
 
@@ -282,10 +292,14 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Five create
-operations have the same retry behaviour with header replay: `charts->create`, `charts->copy`,
-`templates->instantiateTemplate`, `events->create`, and `workspaces->create`. They generate an `Idempotency-Key` when absent and reuse
-that key across every attempt. You can supply a stable provisioning key instead:
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Fourteen mutations
+use exact header replay: `charts->create`, `charts->copy`,
+`templates->instantiateTemplate`, `events->create`, `workspaces->create`,
+`performanceGroups->create`, `seasons->createSeason`, `seasons->updateSeason`,
+`seasons->deleteSeason`, `seasons->createSeasonPlan`, `seasons->duplicateSeasonToLive`,
+`seasons->createSeasonHolderImport`, `seasons->createSeasonRenewalOffers`, and
+`seasons->createSeasonAmendment`. They generate an `Idempotency-Key` when absent and reuse that key
+across every attempt. You can supply a stable provisioning key instead:
 
 ```php
 $seatlayer->events->create(
@@ -295,11 +309,10 @@ $seatlayer->events->create(
 );
 ```
 
-All other mutations are single-attempt: holds, bookings, lifecycle changes, channel changes,
-show-once secret creation, and raw requests. The SDK does not generate a key for them. A supplied
-key on an existing method is validated and forwarded once for compatibility, but it does not
-enable retries or promise replay. Reconcile bookings with their required `bookingRef`; never retry
-an unknown booking outcome as though the transport had made it safe.
+All remaining SDK mutations are single-attempt: holds, bookings, lifecycle changes, channel
+changes, show-once secret creation, and raw requests. Some have a server-side domain idempotency
+contract, but the SDK does not retry them automatically. Reconcile bookings with their required
+`bookingRef`; never retry an unknown booking outcome as though the transport had made it safe.
 
 ```php
 new SeatLayer(
@@ -323,6 +336,10 @@ suite runs without a network.
 
 ## API surface
 
+The client exposes these resources. Performance Groups cover runs, sessions, holds, and bookings;
+Seasons cover catalogue, plan, sales, buyer-session, booking, renewal, occurrence, reporting,
+outbox, and support operations.
+
 | Resource | Methods |
 | --- | --- |
 | `charts` | `list` `listAll` `create` `retrieve` `update` `delete` `copy` `archive` `unarchive` `publish` |
@@ -333,8 +350,10 @@ suite runs without a network.
 | `sessions` | `createManageSession` `revokeManageSession` `createDesignerSession` `revokeDesignerSession` |
 | `webhooks` | `list` `create` `update` `delete` `listDeliveries` |
 | `workspaces` | `list` `create` `retrieve` `update` |
+| `performanceGroups` | `list` `create` `retrieve` `delete` `activate` `close` `retrieveLifecycle` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` `retrieveHold` `bookHold` `retrieveBooking` |
+| `seasons` | 48 operations for catalogue and Plan lifecycle, sales windows, buyer access and booking, holder imports, renewals, occurrence amendments, reports, audit, outbox, and support export |
 
-Full reference: [docs.seatlayer.io/server-sdk](https://docs.seatlayer.io/server-sdk/install/)
+Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
 
 ## Frequently asked questions
 
@@ -369,16 +388,16 @@ outcome before trying again.
 
 ### Can I use my own payment provider?
 
-Yes. SeatLayer never processes payment. Inspect the hold, compute the charge from
-the returned `items` and their authoritative `unitPrice` and `currency`, take the
-money through whichever provider you already use — Stripe, Adyen, Razorpay, or your
-own — and then book the hold with your order id as `bookingRef`. SeatLayer owns
-seating state, holds, booking concurrency, and the inventory ledger; your platform
-owns payments, commercial orders, tickets, delivery, and refunds.
+Yes. This server SDK does not process payment in a Platform/SDK integration. Inspect the hold,
+compute the charge from each returned item's authoritative `unitPrice`, `quantity`, and `currency`,
+take the money through whichever provider you already use, and then book the hold with your order
+id as `bookingRef`. SeatLayer owns seating state, holds, booking concurrency, and the inventory
+ledger in this integration; your platform owns payments, commercial orders, tickets, delivery,
+and refunds. Managed Ticketing is a separate product path with organizer-connected payments.
 
 ## Continue your PHP integration
 
-- [Follow the SeatLayer server SDK guide](https://docs.seatlayer.io/server-sdk/install/)
+- [Follow the PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
   for installation, authentication, and the full hold-to-booking flow.
 - [Handle errors, retries, and safe booking repeats](https://docs.seatlayer.io/server-sdk/reliability/)
   before connecting a production order flow.
