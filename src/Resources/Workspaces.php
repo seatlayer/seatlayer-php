@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SeatLayer\Resources;
 
 use SeatLayer\HttpClient;
+use SeatLayer\EventHostingRegion;
 
 /** Workspaces isolate one tenant's charts and events from another's. */
 final class Workspaces
@@ -21,10 +22,11 @@ final class Workspaces
     }
 
     /** @return array<string, mixed> */
-    public function create(string $name, ?string $externalRef = null, ?string $idempotencyKey = null): array
+    public function create(string $name, ?string $externalRef = null, ?string $idempotencyKey = null, ?string $defaultRegion = null): array
     {
+        EventHostingRegion::assert($defaultRegion);
         $body = array_filter(
-            ['name' => $name, 'externalRef' => $externalRef],
+            ['name' => $name, 'externalRef' => $externalRef, 'defaultRegion' => $defaultRegion],
             static fn (mixed $v): bool => $v !== null,
         );
 
@@ -50,6 +52,11 @@ final class Workspaces
      */
     public function update(string $workspaceId, array $fields): array
     {
+        $defaultRegion = $fields['defaultRegion'] ?? null;
+        if ($defaultRegion !== null && !is_string($defaultRegion)) {
+            throw new \InvalidArgumentException('defaultRegion must be a supported SeatLayer Event region.');
+        }
+        EventHostingRegion::assert($defaultRegion);
         /** @var array<string, mixed> */
         return (array) $this->http->patch('/v1/workspaces/' . HttpClient::encode($workspaceId), $fields);
     }

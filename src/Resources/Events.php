@@ -6,6 +6,7 @@ namespace SeatLayer\Resources;
 
 use Generator;
 use SeatLayer\HttpClient;
+use SeatLayer\EventHostingRegion;
 
 final class Events
 {
@@ -88,7 +89,9 @@ final class Events
         ?string $locale = null,
         ?string $posterAssetId = null,
         ?string $mode = null,
+        ?string $region = null,
     ): array {
+        EventHostingRegion::assert($region);
         $body = array_filter([
             'chartId' => $chartId,
             'name' => $name,
@@ -103,6 +106,7 @@ final class Events
             'locale' => $locale,
             'posterAssetId' => $posterAssetId,
             'mode' => $mode,
+            'region' => $region,
         ], static fn (mixed $v): bool => $v !== null);
 
         /** @var array<string, mixed> */
