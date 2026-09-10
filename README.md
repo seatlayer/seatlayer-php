@@ -40,13 +40,31 @@ $chart = $seatlayer->templates->instantiateTemplate('your-published-template')['
 $seatlayer->charts->publish($chart['id']);
 
 // 2. Create an event on it.
-$event = $seatlayer->events->create($chart['id'], name: 'Spring Gala')['meta'];
+$event = $seatlayer->events->create(
+    $chart['id'], name: 'Spring Gala',
+    currency: 'EUR', // omit to inherit the workspace currency
+    region: \SeatLayer\EventHostingRegion::WESTERN_EUROPE // India: ASIA_PACIFIC
+)['meta'];
 
 // 3. Sell four seats over the phone.
 $held = $seatlayer->inventory->holdBestAvailable($event['key'], qty: 4);
 // … take payment against $held['items'], which carry authoritative prices …
 $seatlayer->inventory->book($event['key'], holdId: $held['holdId'], bookingRef: 'order-8842');
 ```
+
+## Event hosting region
+
+Pass the named `region` argument to `events->create()` based on the **event venue**, not your API
+server or office. It controls the initial placement of the Event's live inventory;
+an existing Event cannot be moved later. Omit it to inherit the workspace default (`western-europe` for new accounts).
+Pass `defaultRegion` to `workspaces->create()` or in the fields sent to
+`workspaces->update()`; changing it affects only future Events.
+
+- `western-europe`, `eastern-europe`, `north-america-east`, `north-america-west`, `south-america`
+- `asia-pacific`, `northeast-asia`, `southeast-asia`, `oceania`, `africa`, `middle-east`
+
+The hint is best effort, not a data-residency guarantee. See the
+[full Event region guide](https://docs.seatlayer.io/server-api/event-regions/).
 
 ## Fixed Renewable Seasons
 

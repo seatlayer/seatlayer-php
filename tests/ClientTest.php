@@ -693,6 +693,7 @@ final class ClientTest extends TestCase
             locale: 'en-GB',
             posterAssetId: 'asset_1',
             mode: 'test',
+            region: \SeatLayer\EventHostingRegion::WESTERN_EUROPE,
         );
         $sdk->events->updateChart('ev_1', true, 'accept allocation drop');
         $sdk->events->updatePoster('ev_1', "\x89PNG\r\n", 'image/png');
@@ -702,6 +703,7 @@ final class ClientTest extends TestCase
         self::assertSame('Gala', $create['description']);
         self::assertSame('Europe/London', $create['timezone']);
         self::assertSame('test', $create['mode']);
+        self::assertSame('western-europe', $create['region']);
         self::assertSame([
             'acknowledgeDroppedAssignments' => true,
             'reason' => 'accept allocation drop',
