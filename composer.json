@@ -1,6 +1,6 @@
 {
   "name": "seatlayer/seatlayer-php",
-  "description": "Official PHP server SDK for the SeatLayer reserved-seating API.",
+  "description": "Official PHP server SDK for the SeatLayer reserved-seating API: seating charts, seat maps, events, holds, seat booking and webhooks.",
   "type": "library",
   "license": "MIT",
   "homepage": "https://docs.seatlayer.io/server-sdk/php/",
