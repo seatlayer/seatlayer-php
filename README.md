@@ -4,7 +4,7 @@
 [![Packagist](https://img.shields.io/packagist/v/seatlayer/seatlayer-php.svg)](https://packagist.org/packages/seatlayer/seatlayer-php)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE)
 
-SeatLayer is interactive seating chart software built for stadium scale. Platforms embed the white-label seat picker with their own checkout; organizers sell seated events on their own website with their own payment gateway.
+The official PHP client for the SeatLayer API. `seatlayer/seatlayer-php` lets a PHP or Laravel backend inspect seat holds, price orders from server data, book reserved seats and verify webhooks, with no Composer dependencies. SeatLayer is seating chart and reserved-seat ticketing software built for venues up to stadium scale.
 
 SeatLayer's official PHP server SDK is the trusted side of its reserved seating and seat booking
 API. Inspect what a hold really contains, price from server-owned seating-chart data, and book
@@ -84,7 +84,7 @@ Version `0.7.0` exposes all 48 trusted organizer operations through
 After the test hold/book/cancel journey and matching webhook deliveries,
 `validateSeasonBuyerRehearsal($seasonKey)` sends no evidence body; SeatLayer
 discovers the retained chain automatically. Retrieved Season holds contain
-inventory identity, not an authoritative amount—your platform owns package
+inventory identity, not an authoritative amount. Your platform owns package
 price, payment, order, tax, refunds, benefits, and ticket or pass delivery.
 
 ```php
@@ -119,7 +119,7 @@ if (getenv('APP_ENV') === 'production' && $seatlayer->mode !== 'live') {
 ## Book reserved seats from PHP
 
 **Buyer picks seats in the browser.** Your frontend holds them; your backend confirms the price and
-books. Never price from what the browser sent you — `retrieveHold` is authoritative.
+books. Never price from what the browser sent you: `retrieveHold` is authoritative.
 
 ```php
 $hold = $seatlayer->inventory->retrieveHold($eventKey, $holdId);
@@ -139,7 +139,7 @@ $seatlayer->inventory->book($eventKey, holdId: $holdId, bookingRef: $charge->id)
 **Your backend picks the seats.** Phone orders, box office, comps.
 
 ```php
-// Payment already taken — book outright, so nothing is stranded if a second call fails.
+// Payment already taken: book outright, so nothing is stranded if a second call fails.
 $seatlayer->inventory->bookBestAvailable($eventKey, qty: 2, bookingRef: 'phone-1183');
 
 // Or name the seats yourself.
@@ -183,7 +183,7 @@ an audit `reason`.
 ## Listing and pagination
 
 `list()` returns one page plus a `nextCursor`. When you want everything, `listAll()` pages for you
-and yields as it goes — a `Generator` rather than an array, because the point of paginating is to
+and yields as it goes. It is a `Generator` rather than an array, because the point of paginating is to
 *not* hold an unbounded result set in memory.
 
 ```php
@@ -199,8 +199,8 @@ foreach ($seatlayer->events->listAll() as $event) {
 ```
 
 Listing events includes live availability `counts` by default, which costs the server one
-round-trip **per event**. `listAll()` turns them off automatically — walking a whole catalogue is
-exactly when you don't want that — and you can control it explicitly:
+round-trip **per event**. `listAll()` turns them off automatically, since walking a whole catalogue is
+exactly when you don't want that, and you can control it explicitly:
 
 ```php
 $seatlayer->events->list(limit: 50, counts: false);
@@ -208,7 +208,7 @@ $seatlayer->events->list(limit: 50, counts: false);
 
 ## Keeping a hold alive
 
-When an order takes longer than the checkout window — an invoice, a phone sale — extend rather than
+When an order takes longer than the checkout window (an invoice, a phone sale), extend rather than
 release and re-hold. Releasing first hands the seats to whoever is racing for them in between.
 
 ```php
@@ -217,7 +217,7 @@ use SeatLayer\ConflictException;
 try {
     $seatlayer->inventory->extendHold($eventKey, $holdId, ttlMs: 10 * 60_000);
 } catch (ConflictException) {
-    // Gone, expired, or at its renewal cap — the buyer has to re-pick.
+    // Gone, expired, or at its renewal cap: the buyer has to re-pick.
 }
 ```
 
@@ -261,7 +261,7 @@ verification will fail.
 use SeatLayer\Webhook;
 use SeatLayer\WebhookVerificationException;
 
-// Laravel: $request->getContent() — never $request->all()
+// Laravel: $request->getContent(), never $request->all()
 $payload = file_get_contents('php://input');
 
 try {
@@ -276,7 +276,7 @@ try {
 }
 
 // The signed body carries `at`, but nothing enforces a freshness window, so a
-// captured delivery stays valid indefinitely. Deduplicate on occurrenceId —
+// captured delivery stays valid indefinitely. Deduplicate on occurrenceId:
 // this is your replay protection, not an optimisation.
 if (alreadyProcessed($event['occurrenceId'])) {
     http_response_code(200);
@@ -311,7 +311,7 @@ try {
 }
 ```
 
-Every exception carries `status`, `errorCode`, `body`, and `requestId` — quote the request id in
+Every exception carries `status`, `errorCode`, `body`, and `requestId`. Quote the request id in
 support requests.
 
 > **Naming note.** The error slug is `$e->errorCode`, not `$e->code`, because PHP's base `Exception`
@@ -387,8 +387,8 @@ Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/serve
 
 ### How do I book seats from PHP?
 
-Create a client with your secret key, obtain a hold id — either from the buyer's
-browser session or by holding server-side — and call `$seatlayer->inventory->book($eventKey, holdId: ..., bookingRef: ...)`.
+Create a client with your secret key, obtain a hold id (either from the buyer's
+browser session or by holding server-side) and call `$seatlayer->inventory->book($eventKey, holdId: ..., bookingRef: ...)`.
 `bookingRef` is your own stable order id and is the join between SeatLayer
 inventory and your commercial order, so the same reference identifies the booking
 in Booking History and when you later cancel it. For phone orders, box office, and
@@ -411,7 +411,7 @@ and at what price, so charge from its `items` rather than from anything the brow
 sent you. When an order runs longer than the checkout window, `$seatlayer->inventory->extendHold(...)`
 renews the hold instead of releasing and re-holding, which would hand the seats to
 whoever is racing for them. Bookings carry the server's exact-selection plus
-`bookingRef` safeguard, but the SDK sends each booking once — reconcile an unknown
+`bookingRef` safeguard, but the SDK sends each booking once; reconcile an unknown
 outcome before trying again.
 
 ### Can I use my own payment provider?
