@@ -19,7 +19,8 @@ final class Events
      *
      * Live availability `counts` cost one round-trip per event server-side. They
      * are on by default because most callers want them; pass `counts: false` when
-     * paging a whole catalogue, where you almost certainly do not.
+     * paging a whole catalogue, where you almost certainly do not. `seriesKey` lists
+     * only the dates of one event series.
      *
      * @return array<string, mixed>
      */
@@ -29,6 +30,7 @@ final class Events
         ?int $limit = null,
         ?string $cursor = null,
         bool $counts = true,
+        ?string $seriesKey = null,
     ): array {
         $query = [
             'workspaceId' => $workspaceId,
@@ -39,6 +41,7 @@ final class Events
         if (!$counts) {
             $query['counts'] = '0';
         }
+        $query['seriesKey'] = $seriesKey;
 
         /** @var array<string, mixed> */
         return (array) $this->http->get('/v1/events', $query);
@@ -56,10 +59,11 @@ final class Events
         ?string $externalRef = null,
         ?int $limit = null,
         bool $counts = false,
+        ?string $seriesKey = null,
     ): Generator {
         $cursor = null;
         do {
-            $page = $this->list($workspaceId, $externalRef, $limit, $cursor, $counts);
+            $page = $this->list($workspaceId, $externalRef, $limit, $cursor, $counts, $seriesKey);
             $events = $page['events'] ?? [];
             if (is_array($events)) {
                 foreach ($events as $event) {

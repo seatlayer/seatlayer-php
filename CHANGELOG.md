@@ -2,12 +2,12 @@
 
 ## Unreleased
 
-- Added the 32 remaining Season organizer operations to `$seatlayer->seasons`, which now
-  has 80: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
+- Added the 35 remaining Season organizer operations to `$seatlayer->seasons`, which now
+  has 83: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
   `updateSeasonPlan`, `deleteSeasonPlan`, `publishSeason`, and more), package prices,
   checkout tests, occurrence returns and reclaims, `listSeasonHolders`, season order refunds,
   cancellations and resends, hosted renewals, renewal links, contacts and notices, the sales,
-  seats and seat-count reports, and holder and order CSV exports.
+  seats and seat-count reports, holder and order CSV exports, and bulk refunds with their jobs.
 - Added `$seatlayer->holders` (holder reads and updates, `listCustomers`, session sign-out,
   tickets, and ticket transfers), `$seatlayer->orders` (orders across events and seasons, and
   one event's orders with refund, cancel, resend, and CSV export), and `$seatlayer->eventSeries`
@@ -18,6 +18,14 @@
 - Replay-backed operations send an `Idempotency-Key` (yours, or a generated one reused on
   retry), as before; every other new mutation is sent once. The CSV exports return the CSV
   text as a string, and the two `204` deletes return nothing.
+- Added `seasons->refundSeasonPerformance` (refund every order of a cancelled date as a job,
+  with header replay), `seasons->listSeasonBulkJobs`, and `seasons->retrieveSeasonBulkJob`.
+- `replaceSeasonPackagePrices` types `priceTypeKey` on each price (`adult`, `child`,
+  `concession`, `senior`, `student`).
+- `createSeasonAmendment` types the `postpone` and `cancel` kinds, with `refund` and `reason`.
+- `updateSeason` types `checkoutMode`, `transferCutoffHours`, and `returnCutoffHours`.
+- `createSeasonHolderImport` documents `holderEmail` and `holderName` on each row.
+- `events->list` and `events->listAll` take `seriesKey` to list one event series' dates.
 
 ## 0.8.0 (2026-09-10)
 

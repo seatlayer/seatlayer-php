@@ -81,7 +81,13 @@ final class Seasons
     }
 
     /**
-     * @param array{expectedRevision:int,name?:string,edition?:?string} $params
+     * Rename a draft Season, or set how it sells.
+     *
+     * `checkoutMode` is who takes the money; it cannot go back to undecided and is fixed once a
+     * live booking exists. The cutoffs are hours before a date starts (0 to 720) after which its
+     * tickets can no longer be sent to others, or a seat given back; `null` means until it starts.
+     *
+     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int} $params
      * @return array<string, mixed>
      */
     public function updateSeason(string $seasonKey, array $params, ?string $idempotencyKey = null): array
@@ -298,6 +304,10 @@ final class Seasons
     }
 
     /**
+     * Import incumbent holders. Each row takes `rowId`, `holderRef`, `priorPlanActivationId`,
+     * `priorContractRef` and `labels`, plus optional `existingBookingRef`, `holderEmail` and
+     * `holderName`.
+     *
      * @param array{successorPlanActivationId:string,dryRun?:bool,rows:list<array<string,mixed>>} $params
      * @return array<string, mixed>
      */
@@ -416,7 +426,11 @@ final class Seasons
     }
 
     /**
-     * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception',startsAt?:int,name?:string} $params
+     * Amend one date of a published Season. `postpone` keeps the date with no new time yet;
+     * `cancel` takes it off sale for good and, with `refund`, refunds its SeatLayer orders as a
+     * job (the answer's `refundJob`).
+     *
+     * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date'|'full',reason?:string} $params
      * @return array<string, mixed>
      */
     public function createSeasonAmendment(
@@ -659,9 +673,10 @@ final class Seasons
     }
 
     /**
-     * Replace a package's price table, per chart category, in minor units.
+     * Replace a package's price table, per chart category, in minor units. A price without a
+     * `priceTypeKey` is `adult`; each category takes each type once.
      *
-     * @param array{prices:list<array{categoryKey:string,unitPrice:int}>,currency?:string} $params
+     * @param array{prices:list<array{categoryKey:string,priceTypeKey?:'adult'|'child'|'concession'|'senior'|'student',unitPrice:int}>,currency?:string} $params
      * @return array<string, mixed>
      */
     public function replaceSeasonPackagePrices(
@@ -680,7 +695,8 @@ final class Seasons
     }
 
     /**
-     * List every package price table for the Season.
+     * List every package price table for the Season. Each price carries its `priceTypeKey` and
+     * `priceTypeLabel`.
      *
      * @return array<string, mixed>
      */
@@ -1019,5 +1035,47 @@ final class Seasons
     public function retrieveSeasonSeatCounts(string $seasonKey): array
     {
         return $this->get($seasonKey, '/seat-counts');
+    }
+
+    /**
+     * Refund every SeatLayer order holding a cancelled date, as a job. `per_date` refunds the
+     * date's share of each order (rounded down); `full` refunds what is left of each order.
+     * Retried safely with one Idempotency-Key, which replays the same job.
+     *
+     * @param array{amount:'per_date'|'full',reason?:string} $params
+     * @return array<string, mixed>
+     */
+    public function refundSeasonPerformance(
+        string $seasonKey,
+        string $eventKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/performances/' . HttpClient::encode($eventKey) . '/refunds'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * List the Season's bulk jobs, newest first (100 at most).
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonBulkJobs(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/jobs');
+    }
+
+    /**
+     * Retrieve one bulk job with its counts and up to 500 failed items.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonBulkJob(string $seasonKey, string $jobId): array
+    {
+        return $this->get($seasonKey, '/jobs/' . HttpClient::encode($jobId));
     }
 }

@@ -31,7 +31,7 @@ final class SeasonTest extends TestCase
         return new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 3, 30.0, $transport);
     }
 
-    public function testMapsAll80SeasonOperationsAndReplayClasses(): void
+    public function testMapsAll83SeasonOperationsAndReplayClasses(): void
     {
         /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> $calls */
         $calls = [];
@@ -165,8 +165,11 @@ final class SeasonTest extends TestCase
         $seasons->exportSeasonHoldersCsv($key, 'smith', 'active');
         $seasons->exportSeasonOrdersCsv($key);
         $seasons->retrieveSeasonSeatCounts($key);
+        $seasons->refundSeasonPerformance($key, 'ev/1', ['amount' => 'per_date', 'reason' => 'Storm'], 'refund-date-1');
+        $seasons->listSeasonBulkJobs($key);
+        $seasons->retrieveSeasonBulkJob($key, 'job/1');
 
-        self::assertCount(80, $calls);
+        self::assertCount(83, $calls);
         $actual = array_map(static fn (array $call): array => [
             $call['method'],
             substr($call['url'], strlen('https://api.seatlayer.io')),
@@ -234,10 +237,12 @@ final class SeasonTest extends TestCase
             ['GET', '/v1/seasons/sea%2Fa/reports/sales'], ['GET', '/v1/seasons/sea%2Fa/reports/seats'],
             ['GET', '/v1/seasons/sea%2Fa/reports/holders.csv?q=smith&status=active'],
             ['GET', '/v1/seasons/sea%2Fa/reports/orders.csv'], ['GET', '/v1/seasons/sea%2Fa/seat-counts'],
+            ['POST', '/v1/seasons/sea%2Fa/performances/ev%2F1/refunds'],
+            ['GET', '/v1/seasons/sea%2Fa/jobs'], ['GET', '/v1/seasons/sea%2Fa/jobs/job%2F1'],
         ], $actual);
         self::assertNull($calls[26]['body']);
 
-        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68];
+        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80];
         foreach ($calls as $index => $call) {
             if (in_array($index, $replayIndexes, true)) {
                 self::assertArrayHasKey('Idempotency-Key', $call['headers']);
@@ -247,6 +252,59 @@ final class SeasonTest extends TestCase
         }
         self::assertSame('from-season-1', $calls[48]['headers']['Idempotency-Key']);
         self::assertSame('date-cancel-1', $calls[68]['headers']['Idempotency-Key']);
+        self::assertSame('refund-date-1', $calls[80]['headers']['Idempotency-Key']);
+        self::assertSame('{"amount":"per_date","reason":"Storm"}', $calls[80]['body']);
+    }
+
+    public function testPriceTypesSaleSettingsHolderContactsAndDateCancelsReachTheWire(): void
+    {
+        $seasons = $this->client()->seasons;
+
+        $seasons->replaceSeasonPackagePrices('sea_1', 'plan_1', ['prices' => [
+            ['categoryKey' => 'stalls', 'unitPrice' => 18000],
+            ['categoryKey' => 'stalls', 'priceTypeKey' => 'child', 'unitPrice' => 9000],
+        ]]);
+        $seasons->updateSeason('sea_1', [
+            'expectedRevision' => 3,
+            'checkoutMode' => 'seatlayer',
+            'transferCutoffHours' => 24,
+            'returnCutoffHours' => null,
+        ]);
+        $seasons->createSeasonHolderImport('sea_1', [
+            'successorPlanActivationId' => 'pa_1',
+            'rows' => [[
+                'rowId' => 'r1',
+                'holderRef' => 'h1',
+                'priorPlanActivationId' => 'pa_0',
+                'priorContractRef' => 'c1',
+                'labels' => ['A-1'],
+                'holderEmail' => 'ana@example.com',
+                'holderName' => 'Ana Silva',
+            ]],
+        ]);
+        $seasons->createSeasonAmendment(
+            'sea_1',
+            ['eventKey' => 'ev_night_3', 'kind' => 'cancel', 'refund' => 'per_date', 'reason' => 'Storm'],
+            'night-3-storm',
+        );
+        $seasons->createSeasonAmendment('sea_1', ['eventKey' => 'ev_1', 'kind' => 'postpone']);
+        $seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'full']);
+
+        self::assertSame([
+            '{"prices":[{"categoryKey":"stalls","unitPrice":18000},'
+                . '{"categoryKey":"stalls","priceTypeKey":"child","unitPrice":9000}]}',
+            '{"expectedRevision":3,"checkoutMode":"seatlayer","transferCutoffHours":24,"returnCutoffHours":null}',
+            '{"successorPlanActivationId":"pa_1","rows":[{"rowId":"r1","holderRef":"h1",'
+                . '"priorPlanActivationId":"pa_0","priorContractRef":"c1","labels":["A-1"],'
+                . '"holderEmail":"ana@example.com","holderName":"Ana Silva"}]}',
+            '{"eventKey":"ev_night_3","kind":"cancel","refund":"per_date","reason":"Storm"}',
+            '{"eventKey":"ev_1","kind":"postpone"}',
+            '{"amount":"full"}',
+        ], array_column($this->calls, 'body'));
+        self::assertSame('night-3-storm', $this->calls[3]['headers']['Idempotency-Key']);
+        // A refund without a caller key still gets one, so a retry replays the same job.
+        self::assertArrayHasKey('Idempotency-Key', $this->calls[5]['headers']);
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea_1/performances/ev_1/refunds', $this->calls[5]['url']);
     }
 
     public function testNewSeasonOperationsSendExactBodies(): void
