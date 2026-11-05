@@ -123,7 +123,7 @@ final class SalesOperationsTest extends TestCase
     {
         $orders = $this->client()->orders;
 
-        $orders->listOrders('ev/1', 'sea/a', 'paid', 1, 2, 'c/1', 10);
+        $orders->listOrders('ev/1', 'sea/a', 'paid', 1, 2, 'c/1', 10, 'ord/1');
         $orders->retrieveOrder('ord/1');
         $orders->listOrderTickets('ord/1');
         $orders->listEventOrders('ev/1', 'ada smith', 'paid', 'card', 1, 2, 'c/1', 25);
@@ -140,7 +140,12 @@ final class SalesOperationsTest extends TestCase
         $orders->resendEventOrderTickets('ev/1', 'ord/1');
 
         self::assertSame([
-            ['GET', '/v1/orders?eventKey=ev%2F1&seasonKey=sea%2Fa&status=paid&from=1&to=2&cursor=c%2F1&limit=10', null, false],
+            [
+                'GET',
+                '/v1/orders?eventKey=ev%2F1&seasonKey=sea%2Fa&holderRef=ord%2F1&status=paid&from=1&to=2&cursor=c%2F1&limit=10',
+                null,
+                false,
+            ],
             ['GET', '/v1/orders/ord%2F1', null, false],
             ['GET', '/v1/orders/ord%2F1/tickets', null, false],
             [
@@ -269,6 +274,7 @@ final class SalesOperationsTest extends TestCase
             ['sales' => 'off', 'prices' => ['categories' => [['key' => 'stalls', 'price' => 25]]]],
             'series-update-1',
         );
+        $series->addEventSeriesDates('ser/1', ['retryFailed' => true]);
 
         self::assertSame([
             [
@@ -287,6 +293,8 @@ final class SalesOperationsTest extends TestCase
                 '{"sales":"off","prices":{"categories":[{"key":"stalls","price":25}]}}',
                 true,
             ],
+            // Make again the dates that failed to be made.
+            ['POST', '/v1/event-series/ser%2F1/dates', '{"retryFailed":true}', true],
         ], $this->recorded());
         self::assertSame('series-1', $this->calls[0]['headers']['Idempotency-Key']);
         self::assertSame('dates-1', $this->calls[3]['headers']['Idempotency-Key']);

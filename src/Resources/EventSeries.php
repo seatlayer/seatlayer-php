@@ -57,10 +57,12 @@ final class EventSeries
     }
 
     /**
-     * Add dates to an event series, copied from its first date: either a `schedule` or
-     * exact `dates` (`YYYY-MM-DDTHH:MM` in the series' zone).
+     * Add dates to an event series, copied from its first date: a `schedule`, exact `dates`
+     * (`YYYY-MM-DDTHH:MM` in the series' zone), or `['retryFailed' => true]` to make again every
+     * date that failed to be made (`422 nothing_to_retry` when none did, `409 series_busy` while
+     * another change runs).
      *
-     * @param array{schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>}}|array{dates:list<string>} $params
+     * @param array{schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>}}|array{dates:list<string>}|array{retryFailed:true} $params
      * @return array<string, mixed>
      */
     public function addEventSeriesDates(string $eventKey, array $params, ?string $idempotencyKey = null): array

@@ -428,7 +428,7 @@ final class ClientTest extends TestCase
             ['status' => 429, 'body' => ['error' => 'rate_limited'], 'headers' => ['retry-after' => '0']],
             ['status' => 202, 'body' => ['job' => ['jobId' => 'sbj_1']]],
         ]);
-        $result = $sdk->seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'full']);
+        $result = $sdk->seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'per_date']);
 
         self::assertSame(['job' => ['jobId' => 'sbj_1']], $result);
         self::assertCount(2, $this->calls);

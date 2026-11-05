@@ -86,8 +86,10 @@ final class Seasons
      * `checkoutMode` is who takes the money; it cannot go back to undecided and is fixed once a
      * live booking exists. The cutoffs are hours before a date starts (0 to 720) after which its
      * tickets can no longer be sent to others, or a seat given back; `null` means until it starts.
+     * `audience` `public` lists the Season on your SeatLayer website; an ended Season cannot
+     * become public (`409 sales_ended`).
      *
-     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int} $params
+     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public'} $params
      * @return array<string, mixed>
      */
     public function updateSeason(string $seasonKey, array $params, ?string $idempotencyKey = null): array
@@ -179,7 +181,14 @@ final class Seasons
         return $this->post($seasonKey, '/sales/' . $action, ['expectedRevision' => $expectedRevision]);
     }
 
-    /** @return array<string, mixed> */
+    /**
+     * Open sales. The answer's `warnings` say what is advised but not required, such as
+     * `checkout_test_missing` until a checkout test or rehearsal has passed. Refused with
+     * `409 plan_not_published` or `409 checkout_mode_not_chosen` until a package is published and
+     * a checkout mode is chosen.
+     *
+     * @return array<string, mixed>
+     */
     public function openSeasonSales(string $seasonKey, int $expectedRevision): array
     {
         return $this->sales($seasonKey, 'open', $expectedRevision);
@@ -434,10 +443,11 @@ final class Seasons
 
     /**
      * Amend one date of a published Season. `postpone` keeps the date with no new time yet;
-     * `cancel` takes it off sale for good and, with `refund`, refunds its SeatLayer orders as a
-     * job (the answer's `refundJob`).
+     * `cancel` takes it off sale for good and, with `refund` `per_date`, refunds each SeatLayer
+     * order's share of the date as a job (the answer's `refundJob`). A whole-order refund is the
+     * order refund.
      *
-     * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date'|'full',reason?:string} $params
+     * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date',reason?:string} $params
      * @return array<string, mixed>
      */
     public function createSeasonAmendment(
@@ -1099,10 +1109,11 @@ final class Seasons
 
     /**
      * Refund every SeatLayer order holding a cancelled date, as a job. `per_date` refunds the
-     * date's share of each order (rounded down); `full` refunds what is left of each order.
-     * Retried safely with one Idempotency-Key, which replays the same job.
+     * date's share of each order (rounded down). `full` is refused (`422
+     * date_refund_per_date_only`): refund a whole order with the order refund. Retried safely
+     * with one Idempotency-Key, which replays the same job.
      *
-     * @param array{amount:'per_date'|'full',reason?:string} $params
+     * @param array{amount:'per_date',reason?:string} $params
      * @return array<string, mixed>
      */
     public function refundSeasonPerformance(

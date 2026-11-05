@@ -327,6 +327,7 @@ final class SeasonTest extends TestCase
             'checkoutMode' => 'seatlayer',
             'transferCutoffHours' => 24,
             'returnCutoffHours' => null,
+            'audience' => 'public',
         ]);
         $seasons->createSeasonHolderImport('sea_1', [
             'successorPlanActivationId' => 'pa_1',
@@ -346,18 +347,19 @@ final class SeasonTest extends TestCase
             'night-3-storm',
         );
         $seasons->createSeasonAmendment('sea_1', ['eventKey' => 'ev_1', 'kind' => 'postpone']);
-        $seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'full']);
+        $seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'per_date']);
 
         self::assertSame([
             '{"prices":[{"categoryKey":"stalls","unitPrice":18000},'
                 . '{"categoryKey":"stalls","priceTypeKey":"child","unitPrice":9000}]}',
-            '{"expectedRevision":3,"checkoutMode":"seatlayer","transferCutoffHours":24,"returnCutoffHours":null}',
+            '{"expectedRevision":3,"checkoutMode":"seatlayer","transferCutoffHours":24,"returnCutoffHours":null,'
+                . '"audience":"public"}',
             '{"successorPlanActivationId":"pa_1","rows":[{"rowId":"r1","holderRef":"h1",'
                 . '"priorPlanActivationId":"pa_0","priorContractRef":"c1","labels":["A-1"],'
                 . '"holderEmail":"ana@example.com","holderName":"Ana Silva"}]}',
             '{"eventKey":"ev_night_3","kind":"cancel","refund":"per_date","reason":"Storm"}',
             '{"eventKey":"ev_1","kind":"postpone"}',
-            '{"amount":"full"}',
+            '{"amount":"per_date"}',
         ], array_column($this->calls, 'body'));
         self::assertSame('night-3-storm', $this->calls[3]['headers']['Idempotency-Key']);
         // A refund without a caller key still gets one, so a retry replays the same job.

@@ -15,6 +15,9 @@ final class Orders
 
     /**
      * List orders across events and seasons. `$from` and `$to` are epoch milliseconds.
+     * `$holderRef` lists one holder's orders: the Season order with that id and renewals offered
+     * to that reference. Each order carries `holderRef` and `customerId`; `buyer.email` is null
+     * for a box office sale taken without one.
      *
      * @return array<string, mixed>
      */
@@ -26,11 +29,13 @@ final class Orders
         ?int $to = null,
         ?string $cursor = null,
         ?int $limit = null,
+        ?string $holderRef = null,
     ): array {
         /** @var array<string, mixed> */
         return (array) $this->http->get('/v1/orders', array_filter([
             'eventKey' => $eventKey,
             'seasonKey' => $seasonKey,
+            'holderRef' => $holderRef,
             'status' => $status,
             'from' => $from,
             'to' => $to,
