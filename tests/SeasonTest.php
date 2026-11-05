@@ -9,7 +9,29 @@ use SeatLayer\SeatLayer;
 
 final class SeasonTest extends TestCase
 {
-    public function testMapsAll48SeasonOperationsAndReplayClasses(): void
+    /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> */
+    private array $calls = [];
+
+    /** A client whose transport records every request and answers with one fixed response. */
+    private function client(int $status = 200, string $body = '{}'): SeatLayer
+    {
+        $this->calls = [];
+        $transport = function (
+            string $method,
+            string $url,
+            array $headers,
+            ?string $payload,
+            float $_timeout,
+        ) use ($status, $body): array {
+            $this->calls[] = ['method' => $method, 'url' => $url, 'headers' => $headers, 'body' => $payload];
+
+            return ['status' => $status, 'body' => $body, 'headers' => []];
+        };
+
+        return new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 3, 30.0, $transport);
+    }
+
+    public function testMapsAll80SeasonOperationsAndReplayClasses(): void
     {
         /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> $calls */
         $calls = [];
@@ -81,8 +103,70 @@ final class SeasonTest extends TestCase
         $seasons->replaySeasonOutbox($key, 'occurrence/1');
         $seasons->listSeasonAudit($key);
         $seasons->exportSeasonSupportSnapshot($key);
+        $seasons->createSeasonHolderImportFromSeason(
+            $key,
+            ['sourceSeasonId' => 'sea_2026', 'successorPlanActivationId' => 'pa_1'],
+            'from-season-1',
+        );
+        $seasons->listSeasonPerformances($key);
+        $seasons->createSeasonPerformances(
+            $key,
+            ['titlePattern' => 'Night {n}', 'timezone' => 'Europe/London', 'repeat' => 'weekly', 'count' => 4],
+            'perf-1',
+        );
+        $seasons->attachSeasonPerformances($key, ['eventKeys' => ['ev_1', 'ev_2']], 'attach-1');
+        $seasons->deleteSeasonPerformance($key, 'ev/1', 'perf-del-1');
+        $seasons->updateSeasonPlan($key, 'plan/1', ['name' => 'Full run'], 'plan-update-1');
+        $seasons->deleteSeasonPlan($key, 'plan/1', 'plan-del-1');
+        $seasons->publishSeason($key, 'publish-1');
+        $seasons->createSeasonCheckoutTest($key, ['planKey' => 'plan_1', 'quantity' => 2], 'checkout-1');
+        $seasons->listSeasonCheckoutTests($key);
+        $seasons->replaceSeasonPackagePrices(
+            $key,
+            'plan/1',
+            ['prices' => [['categoryKey' => 'stalls', 'unitPrice' => 12000]], 'currency' => 'GBP'],
+            'prices-1',
+        );
+        $seasons->listSeasonPrices($key);
+        $seasons->attachSeasonPlanPerformance($key, 'plan/1', 'ev_3', 'plan-perf-1');
+        $seasons->deleteSeasonPlanPerformance($key, 'plan/1', 'ev/3', 'plan-perf-del-1');
+        $seasons->markSeasonPerformancePast($key, 'ev/1', true, 'past-1');
+        $seasons->returnSeasonOccurrenceInventory(
+            $key,
+            'ev/1',
+            'return_1',
+            'order_1',
+            'pa_1',
+            ['A-1', 'A-2'],
+            ['bookingActionId' => 'book_1'],
+        );
+        $seasons->reclaimSeasonOccurrenceInventory(
+            $key,
+            'ev/1',
+            'reclaim_1',
+            'return_1',
+            'order_1',
+            'pa_1',
+            ['A-1'],
+            ['renewalOfferId' => 'offer_1'],
+        );
+        $seasons->listSeasonHolders($key, 'smith & co', 'active', 'c/2', 25);
+        $seasons->refundSeasonOrder($key, 'ord/1', 500, 'refund-1');
+        $seasons->cancelSeasonOrder($key, 'ord/1', ['reason' => 'refunded_elsewhere', 'notifyBuyer' => false], 'cancel-1');
+        $seasons->cancelSeasonOrderDate($key, 'ord/1', 'ev/1', 'date_cancel_1', 'date-cancel-1');
+        $seasons->resendSeasonOrderTickets($key, 'ord/1', 'buyer@example.com');
+        $seasons->retrieveSeasonHostedRenewals($key);
+        $seasons->rotateSeasonRenewalOfferLink($key, 'offer/1');
+        $seasons->updateSeasonRenewalOfferContact($key, 'offer/1', ['email' => 'new@example.com', 'name' => null]);
+        $seasons->createSeasonRenewalNotices($key, ['offer_1', 'offer_2']);
+        $seasons->resendSeasonRenewalOffer($key, 'offer/1');
+        $seasons->retrieveSeasonSalesReport($key);
+        $seasons->retrieveSeasonSeatsReport($key);
+        $seasons->exportSeasonHoldersCsv($key, 'smith', 'active');
+        $seasons->exportSeasonOrdersCsv($key);
+        $seasons->retrieveSeasonSeatCounts($key);
 
-        self::assertCount(48, $calls);
+        self::assertCount(80, $calls);
         $actual = array_map(static fn (array $call): array => [
             $call['method'],
             substr($call['url'], strlen('https://api.seatlayer.io')),
@@ -124,10 +208,36 @@ final class SeasonTest extends TestCase
             ['GET', '/v1/seasons/sea%2Fa/outbox'],
             ['POST', '/v1/seasons/sea%2Fa/outbox/occurrence%2F1/replay'],
             ['GET', '/v1/seasons/sea%2Fa/audit'], ['GET', '/v1/seasons/sea%2Fa/export'],
+            ['POST', '/v1/seasons/sea%2Fa/imports/from-season'],
+            ['GET', '/v1/seasons/sea%2Fa/performances'], ['POST', '/v1/seasons/sea%2Fa/performances'],
+            ['POST', '/v1/seasons/sea%2Fa/performances/attach'],
+            ['DELETE', '/v1/seasons/sea%2Fa/performances/ev%2F1'],
+            ['PATCH', '/v1/seasons/sea%2Fa/plans/plan%2F1'], ['DELETE', '/v1/seasons/sea%2Fa/plans/plan%2F1'],
+            ['POST', '/v1/seasons/sea%2Fa/publish'],
+            ['POST', '/v1/seasons/sea%2Fa/checkout-tests'], ['GET', '/v1/seasons/sea%2Fa/checkout-tests'],
+            ['PUT', '/v1/seasons/sea%2Fa/plans/plan%2F1/prices'], ['GET', '/v1/seasons/sea%2Fa/prices'],
+            ['POST', '/v1/seasons/sea%2Fa/plans/plan%2F1/performances'],
+            ['DELETE', '/v1/seasons/sea%2Fa/plans/plan%2F1/performances/ev%2F3'],
+            ['POST', '/v1/seasons/sea%2Fa/performances/ev%2F1/past'],
+            ['POST', '/v1/seasons/sea%2Fa/occurrences/ev%2F1/returns'],
+            ['POST', '/v1/seasons/sea%2Fa/occurrences/ev%2F1/reclaims'],
+            ['GET', '/v1/seasons/sea%2Fa/holders?q=smith+%26+co&status=active&cursor=c%2F2&limit=25'],
+            ['POST', '/v1/seasons/sea%2Fa/orders/ord%2F1/refund'],
+            ['POST', '/v1/seasons/sea%2Fa/orders/ord%2F1/cancel'],
+            ['POST', '/v1/seasons/sea%2Fa/orders/ord%2F1/dates/ev%2F1/cancel'],
+            ['POST', '/v1/seasons/sea%2Fa/orders/ord%2F1/resend'],
+            ['GET', '/v1/seasons/sea%2Fa/renewal-hosted'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/link'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/contact'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-notices'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/resend'],
+            ['GET', '/v1/seasons/sea%2Fa/reports/sales'], ['GET', '/v1/seasons/sea%2Fa/reports/seats'],
+            ['GET', '/v1/seasons/sea%2Fa/reports/holders.csv?q=smith&status=active'],
+            ['GET', '/v1/seasons/sea%2Fa/reports/orders.csv'], ['GET', '/v1/seasons/sea%2Fa/seat-counts'],
         ], $actual);
         self::assertNull($calls[26]['body']);
 
-        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38];
+        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68];
         foreach ($calls as $index => $call) {
             if (in_array($index, $replayIndexes, true)) {
                 self::assertArrayHasKey('Idempotency-Key', $call['headers']);
@@ -135,5 +245,137 @@ final class SeasonTest extends TestCase
                 self::assertArrayNotHasKey('Idempotency-Key', $call['headers']);
             }
         }
+        self::assertSame('from-season-1', $calls[48]['headers']['Idempotency-Key']);
+        self::assertSame('date-cancel-1', $calls[68]['headers']['Idempotency-Key']);
+    }
+
+    public function testNewSeasonOperationsSendExactBodies(): void
+    {
+        $seasons = $this->client()->seasons;
+        $key = 'sea/a';
+
+        $seasons->createSeasonHolderImportFromSeason(
+            $key,
+            ['sourceSeasonId' => 'sea_2026', 'successorPlanActivationId' => 'pa_1', 'dryRun' => true],
+        );
+        $seasons->createSeasonPerformances($key, [
+            'titlePattern' => 'Night {n}',
+            'timezone' => 'Europe/London',
+            'repeat' => 'dates',
+            'dates' => [1798761600000, 1799366400000],
+            'venue' => null,
+            'region' => 'western-europe',
+            'attachToPlanKeys' => ['plan_1'],
+        ]);
+        $seasons->attachSeasonPerformances(
+            $key,
+            ['eventKeys' => ['ev_1', 'ev_2'], 'attachToPlanKeys' => ['plan_1']],
+        );
+        $seasons->deleteSeasonPerformance($key, 'ev/1');
+        $seasons->updateSeasonPlan($key, 'plan/1', ['eventKeys' => ['ev_1', 'ev_2']]);
+        $seasons->publishSeason($key);
+        $seasons->createSeasonCheckoutTest($key);
+        $seasons->replaceSeasonPackagePrices(
+            $key,
+            'plan/1',
+            ['prices' => [['categoryKey' => 'stalls', 'unitPrice' => 12000]]],
+        );
+        $seasons->attachSeasonPlanPerformance($key, 'plan/1', 'ev_3');
+        $seasons->markSeasonPerformancePast($key, 'ev/1');
+        $seasons->returnSeasonOccurrenceInventory(
+            $key,
+            'ev/1',
+            'return_1',
+            'order_1',
+            'pa_1',
+            ['A-1'],
+            ['bookingActionId' => 'book_1'],
+        );
+        $seasons->reclaimSeasonOccurrenceInventory(
+            $key,
+            'ev/1',
+            'reclaim_1',
+            'return_1',
+            'order_1',
+            'pa_1',
+            ['A-1'],
+            ['renewalOfferId' => 'offer_1'],
+        );
+        $seasons->refundSeasonOrder($key, 'ord/1');
+        $seasons->cancelSeasonOrder(
+            $key,
+            'ord/1',
+            ['reason' => 'other', 'note' => 'Chargeback lost', 'refundConfirmed' => true],
+        );
+        $seasons->cancelSeasonOrderDate($key, 'ord/1', 'ev/1');
+        $seasons->resendSeasonOrderTickets($key, 'ord/1');
+        $seasons->rotateSeasonRenewalOfferLink($key, 'offer/1');
+        $seasons->updateSeasonRenewalOfferContact($key, 'offer/1', ['name' => 'Ada Holder']);
+        $seasons->createSeasonRenewalNotices($key);
+        $seasons->resendSeasonRenewalOffer($key, 'offer/1');
+        $seasons->listSeasonHolders($key);
+
+        self::assertSame([
+            '{"sourceSeasonId":"sea_2026","successorPlanActivationId":"pa_1","dryRun":true}',
+            '{"titlePattern":"Night {n}","timezone":"Europe\\/London","repeat":"dates",'
+                . '"dates":[1798761600000,1799366400000],"venue":null,"region":"western-europe",'
+                . '"attachToPlanKeys":["plan_1"]}',
+            '{"eventKeys":["ev_1","ev_2"],"attachToPlanKeys":["plan_1"]}',
+            null,
+            '{"eventKeys":["ev_1","ev_2"]}',
+            '{}',
+            '{}',
+            '{"prices":[{"categoryKey":"stalls","unitPrice":12000}]}',
+            '{"eventKey":"ev_3"}',
+            '{}',
+            '{"actionId":"return_1","bookingRef":"order_1","planActivationId":"pa_1","labels":["A-1"],'
+                . '"source":{"bookingActionId":"book_1"}}',
+            '{"actionId":"reclaim_1","returnActionId":"return_1","bookingRef":"order_1",'
+                . '"planActivationId":"pa_1","labels":["A-1"],"source":{"renewalOfferId":"offer_1"}}',
+            '{}',
+            '{"reason":"other","note":"Chargeback lost","refundConfirmed":true}',
+            '{}',
+            '{}',
+            '{}',
+            '{"name":"Ada Holder"}',
+            '{}',
+            '{}',
+            null,
+        ], array_column($this->calls, 'body'));
+
+        // Replay-backed calls without a caller key still get a generated one.
+        foreach ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 12, 13, 14] as $index) {
+            self::assertArrayHasKey('Idempotency-Key', $this->calls[$index]['headers']);
+        }
+        foreach ([10, 11, 15, 16, 17, 18, 19, 20] as $index) {
+            self::assertArrayNotHasKey('Idempotency-Key', $this->calls[$index]['headers']);
+        }
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea%2Fa/holders', $this->calls[20]['url']);
+    }
+
+    public function testSeasonCsvExportsReturnTheRawText(): void
+    {
+        $csv = "holderRef,name\nH-1,\"Smith, Ada\"\n";
+        $seasons = $this->client(200, $csv)->seasons;
+
+        self::assertSame($csv, $seasons->exportSeasonHoldersCsv('sea/a'));
+        self::assertSame($csv, $seasons->exportSeasonOrdersCsv('sea/a'));
+        self::assertSame('GET', $this->calls[0]['method']);
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea%2Fa/reports/holders.csv', $this->calls[0]['url']);
+        self::assertStringStartsWith('text/csv', $this->calls[0]['headers']['Accept']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->calls[1]['headers']);
+    }
+
+    public function testDeleteSeasonPlanAcceptsAnEmpty204(): void
+    {
+        $seasons = $this->client(204, '')->seasons;
+
+        $seasons->deleteSeasonPlan('sea/a', 'plan/1', 'plan-del-1');
+
+        self::assertCount(1, $this->calls);
+        self::assertSame('DELETE', $this->calls[0]['method']);
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea%2Fa/plans/plan%2F1', $this->calls[0]['url']);
+        self::assertNull($this->calls[0]['body']);
+        self::assertSame('plan-del-1', $this->calls[0]['headers']['Idempotency-Key']);
     }
 }

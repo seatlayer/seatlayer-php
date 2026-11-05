@@ -495,4 +495,529 @@ final class Seasons
     {
         return $this->get($seasonKey, '/export');
     }
+
+    /**
+     * Dry-run or commit renewal rights derived from a previous season's holders.
+     *
+     * @param array{sourceSeasonId:string,successorPlanActivationId:string,dryRun?:bool} $params
+     * @return array<string, mixed>
+     */
+    public function createSeasonHolderImportFromSeason(
+        string $seasonKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/imports/from-season'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * List the Season's performances and package membership in every lifecycle state.
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonPerformances(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/performances');
+    }
+
+    /**
+     * Create performances inside a draft Season from a repeat rule.
+     *
+     * @param array{titlePattern:string,timezone:string,repeat:'none'|'daily'|'weekly'|'biweekly'|'dates',firstStartsAt?:int|float,count?:int,dates?:list<int|float>,venue?:?string,durationMinutes?:?int,region?:string,attachToPlanKeys?:list<string>} $params
+     * @return array<string, mixed>
+     */
+    public function createSeasonPerformances(
+        string $seasonKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/performances'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Attach existing Events to a draft Season and, optionally, to its packages.
+     *
+     * @param array{eventKeys:list<string>,attachToPlanKeys?:list<string>} $params
+     * @return array<string, mixed>
+     */
+    public function attachSeasonPerformances(
+        string $seasonKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/performances/attach'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Remove a performance from a draft Season and every package.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteSeasonPerformance(
+        string $seasonKey,
+        string $eventKey,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->mutationWithHeaderReplay(
+            'DELETE',
+            self::path($seasonKey, '/performances/' . HttpClient::encode($eventKey)),
+            null,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Rename a draft package or change the performances it covers.
+     *
+     * @param array{name?:string,eventKeys?:list<string>} $params
+     * @return array<string, mixed>
+     */
+    public function updateSeasonPlan(
+        string $seasonKey,
+        string $planKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->mutationWithHeaderReplay(
+            'PATCH',
+            self::path($seasonKey, '/plans/' . HttpClient::encode($planKey)),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /** Delete a draft package that is not the Season's last one. The API answers 204. */
+    public function deleteSeasonPlan(string $seasonKey, string $planKey, ?string $idempotencyKey = null): void
+    {
+        $this->http->mutationWithHeaderReplay(
+            'DELETE',
+            self::path($seasonKey, '/plans/' . HttpClient::encode($planKey)),
+            null,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Activate the Season structure and publish every draft package in one retryable call.
+     *
+     * @return array<string, mixed>
+     */
+    public function publishSeason(string $seasonKey, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObjectWithHeaderReplay(
+            self::path($seasonKey, '/publish'),
+            [],
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Run a server-side hold and release to prove the Season buyer path.
+     *
+     * @param array{planKey?:string,quantity?:int} $params
+     * @return array<string, mixed>
+     */
+    public function createSeasonCheckoutTest(
+        string $seasonKey,
+        array $params = [],
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObjectWithHeaderReplay(
+            self::path($seasonKey, '/checkout-tests'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * List recent Season checkout tests, newest first.
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonCheckoutTests(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/checkout-tests');
+    }
+
+    /**
+     * Replace a package's price table, per chart category, in minor units.
+     *
+     * @param array{prices:list<array{categoryKey:string,unitPrice:int}>,currency?:string} $params
+     * @return array<string, mixed>
+     */
+    public function replaceSeasonPackagePrices(
+        string $seasonKey,
+        string $planKey,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->mutationWithHeaderReplay(
+            'PUT',
+            self::path($seasonKey, '/plans/' . HttpClient::encode($planKey) . '/prices'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * List every package price table for the Season.
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonPrices(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/prices');
+    }
+
+    /**
+     * Add a performance to a published package and extend its allocations.
+     *
+     * @return array<string, mixed>
+     */
+    public function attachSeasonPlanPerformance(
+        string $seasonKey,
+        string $planKey,
+        string $eventKey,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/plans/' . HttpClient::encode($planKey) . '/performances'),
+            ['eventKey' => $eventKey],
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Remove a performance from a published package and release its allocations.
+     *
+     * @return array<string, mixed>
+     */
+    public function deleteSeasonPlanPerformance(
+        string $seasonKey,
+        string $planKey,
+        string $eventKey,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->mutationWithHeaderReplay(
+            'DELETE',
+            self::path(
+                $seasonKey,
+                '/plans/' . HttpClient::encode($planKey) . '/performances/' . HttpClient::encode($eventKey),
+            ),
+            null,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Mark a performance past so it stops blocking new Season sales.
+     *
+     * @return array<string, mixed>
+     */
+    public function markSeasonPerformancePast(
+        string $seasonKey,
+        string $eventKey,
+        ?bool $force = null,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObjectWithHeaderReplay(
+            self::path($seasonKey, '/performances/' . HttpClient::encode($eventKey) . '/past'),
+            array_filter(['force' => $force], static fn (mixed $value): bool => $value !== null),
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Return one Season occurrence allocation to ordinary Event inventory.
+     *
+     * Single-attempt: the stable `actionId` is the API's domain idempotency key.
+     *
+     * @param list<string> $labels
+     * @param array{bookingActionId:string}|array{renewalOfferId:string} $source
+     * @return array<string, mixed>
+     */
+    public function returnSeasonOccurrenceInventory(
+        string $seasonKey,
+        string $eventKey,
+        string $actionId,
+        string $bookingRef,
+        string $planActivationId,
+        array $labels,
+        array $source,
+    ): array {
+        return $this->post($seasonKey, '/occurrences/' . HttpClient::encode($eventKey) . '/returns', [
+            'actionId' => $actionId,
+            'bookingRef' => $bookingRef,
+            'planActivationId' => $planActivationId,
+            'labels' => $labels,
+            'source' => $source,
+        ]);
+    }
+
+    /**
+     * Reclaim returned occurrence inventory while it is still free.
+     *
+     * Single-attempt: the stable `actionId` is the API's domain idempotency key.
+     *
+     * @param list<string> $labels
+     * @param array{bookingActionId:string}|array{renewalOfferId:string} $source
+     * @return array<string, mixed>
+     */
+    public function reclaimSeasonOccurrenceInventory(
+        string $seasonKey,
+        string $eventKey,
+        string $actionId,
+        string $returnActionId,
+        string $bookingRef,
+        string $planActivationId,
+        array $labels,
+        array $source,
+    ): array {
+        return $this->post($seasonKey, '/occurrences/' . HttpClient::encode($eventKey) . '/reclaims', [
+            'actionId' => $actionId,
+            'returnActionId' => $returnActionId,
+            'bookingRef' => $bookingRef,
+            'planActivationId' => $planActivationId,
+            'labels' => $labels,
+            'source' => $source,
+        ]);
+    }
+
+    /**
+     * List season ticket holders, one page at a time.
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonHolders(
+        string $seasonKey,
+        ?string $q = null,
+        ?string $status = null,
+        ?string $cursor = null,
+        ?int $limit = null,
+    ): array {
+        return $this->get($seasonKey, '/holders', array_filter([
+            'q' => $q,
+            'status' => $status,
+            'cursor' => $cursor,
+            'limit' => $limit,
+        ], static fn (mixed $value): bool => $value !== null));
+    }
+
+    /**
+     * Refund a season order in full, or in part with `$amountMinor`, through its payment provider.
+     *
+     * @return array<string, mixed>
+     */
+    public function refundSeasonOrder(
+        string $seasonKey,
+        string $orderId,
+        ?int $amountMinor = null,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObjectWithHeaderReplay(
+            self::path($seasonKey, '/orders/' . HttpClient::encode($orderId) . '/refund'),
+            array_filter(['amountMinor' => $amountMinor], static fn (mixed $value): bool => $value !== null),
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Cancel a season order without moving money and release every date.
+     *
+     * @param array{reason:'lost_dispute'|'refunded_elsewhere'|'other',note?:string,refundConfirmed?:bool,usedTicketsAcknowledged?:bool,notifyBuyer?:bool} $params
+     * @return array<string, mixed>
+     */
+    public function cancelSeasonOrder(
+        string $seasonKey,
+        string $orderId,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/orders/' . HttpClient::encode($orderId) . '/cancel'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Take back one date of a season order and put its seats back on sale.
+     *
+     * @return array<string, mixed>
+     */
+    public function cancelSeasonOrderDate(
+        string $seasonKey,
+        string $orderId,
+        string $eventKey,
+        ?string $actionId = null,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObjectWithHeaderReplay(
+            self::path(
+                $seasonKey,
+                '/orders/' . HttpClient::encode($orderId) . '/dates/' . HttpClient::encode($eventKey) . '/cancel',
+            ),
+            array_filter(['actionId' => $actionId], static fn (mixed $value): bool => $value !== null),
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Email a season order's tickets again, optionally to another address.
+     *
+     * Single-attempt: the API does not promise replay, so a retry could send a second email.
+     *
+     * @return array<string, mixed>
+     */
+    public function resendSeasonOrderTickets(string $seasonKey, string $orderId, ?string $email = null): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/orders/' . HttpClient::encode($orderId) . '/resend',
+            array_filter(['email' => $email], static fn (mixed $value): bool => $value !== null),
+        );
+    }
+
+    /**
+     * Retrieve renewal links, payments and emails per offer.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonHostedRenewals(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/renewal-hosted');
+    }
+
+    /**
+     * Make a new renewal link for one holder; the old link stops working.
+     *
+     * This show-once link mint is deliberately single-attempt.
+     *
+     * @return array<string, mixed>
+     */
+    public function rotateSeasonRenewalOfferLink(string $seasonKey, string $offerId): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/renewal-offers/' . HttpClient::encode($offerId) . '/link',
+            [],
+        );
+    }
+
+    /**
+     * Set the name and email a renewal offer is sent to. Pass null for a field to clear it.
+     *
+     * @param array{email?:?string,name?:?string} $params
+     * @return array<string, mixed>
+     */
+    public function updateSeasonRenewalOfferContact(string $seasonKey, string $offerId, array $params): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/renewal-offers/' . HttpClient::encode($offerId) . '/contact',
+            $params,
+        );
+    }
+
+    /**
+     * Email renewal invitations now, and reminders before the deadline.
+     *
+     * @param list<string>|null $offerIds Only these offers; null means every open offer.
+     * @return array<string, mixed>
+     */
+    public function createSeasonRenewalNotices(string $seasonKey, ?array $offerIds = null): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/renewal-notices',
+            $offerIds === null ? [] : ['offerIds' => $offerIds],
+        );
+    }
+
+    /**
+     * Send one holder a new renewal invitation.
+     *
+     * Single-attempt: the API does not promise replay, so a retry could send a second email.
+     *
+     * @return array<string, mixed>
+     */
+    public function resendSeasonRenewalOffer(string $seasonKey, string $offerId): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/renewal-offers/' . HttpClient::encode($offerId) . '/resend',
+            [],
+        );
+    }
+
+    /**
+     * Retrieve season money, seats, holders and renewals as totals.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonSalesReport(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/reports/sales');
+    }
+
+    /**
+     * Retrieve the seats still free per package and per date.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonSeatsReport(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/reports/seats');
+    }
+
+    /** Download every season ticket holder as CSV. Returns the CSV text as sent. */
+    public function exportSeasonHoldersCsv(string $seasonKey, ?string $q = null, ?string $status = null): string
+    {
+        return $this->http->getText(self::path($seasonKey, '/reports/holders.csv'), array_filter([
+            'q' => $q,
+            'status' => $status,
+        ], static fn (mixed $value): bool => $value !== null));
+    }
+
+    /** Download every season order SeatLayer took as CSV. Returns the CSV text as sent. */
+    public function exportSeasonOrdersCsv(string $seasonKey): string
+    {
+        return $this->http->getText(self::path($seasonKey, '/reports/orders.csv'));
+    }
+
+    /**
+     * Retrieve season seats sold per package and per date.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonSeatCounts(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/seat-counts');
+    }
 }
