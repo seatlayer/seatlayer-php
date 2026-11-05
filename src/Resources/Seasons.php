@@ -340,6 +340,12 @@ final class Seasons
     }
 
     /**
+     * Make one renewal offer per eligible prior Contract. For 100 contracts or fewer the API
+     * answers `201` with `offers`. Above 100 it answers `202` with `job` (a `renewal_run` job)
+     * and `batchId`: follow the job with `retrieveSeasonBulkJob()`, then page the offers with
+     * `listSeasonRenewalOffers()`. Retried safely with one Idempotency-Key, which answers the
+     * same offers or job. It can refuse with `409 job_mismatch` or `503 season_not_configured`.
+     *
      * @param array{deadlineAt:int,successorPlanActivationId?:string,contractIds?:list<string>} $params
      * @return array<string, mixed>
      */
@@ -356,10 +362,21 @@ final class Seasons
         );
     }
 
-    /** @return array<string, mixed> */
-    public function listSeasonRenewalOffers(string $seasonKey): array
-    {
-        return $this->get($seasonKey, '/renewal-offers');
+    /**
+     * One page of renewal offers, newest first. Pass `$cursor` from the previous page's
+     * `nextCursor`, which is null on the last page. `$limit` is 1-100 and defaults to 100.
+     *
+     * @return array<string, mixed>
+     */
+    public function listSeasonRenewalOffers(
+        string $seasonKey,
+        ?string $cursor = null,
+        ?int $limit = null,
+    ): array {
+        return $this->get($seasonKey, '/renewal-offers', array_filter([
+            'cursor' => $cursor,
+            'limit' => $limit,
+        ], static fn (mixed $value): bool => $value !== null));
     }
 
     /** @return array<string, mixed> */
@@ -529,6 +546,12 @@ final class Seasons
 
     /**
      * Dry-run or commit renewal rights derived from a previous season's holders.
+     *
+     * A dry run answers `200` and a commit of 100 holders or fewer `201`, both with `import`.
+     * A commit of more than 100 holders answers `202` with `job` (a `holder_import` job): follow
+     * it with `retrieveSeasonBulkJob()`, whose `summary` has the same counts when it completes.
+     * Retried safely with one Idempotency-Key, which answers the same import or job. It can
+     * refuse with `409 job_mismatch`, `503 job_busy` or `503 season_not_configured`.
      *
      * @param array{sourceSeasonId:string,successorPlanActivationId:string,dryRun?:bool} $params
      * @return array<string, mixed>
@@ -938,13 +961,21 @@ final class Seasons
     }
 
     /**
-     * Retrieve renewal links, payments and emails per offer.
+     * Retrieve renewal links, payments and emails for one page of offers, newest first. Pass
+     * `$cursor` from the previous page's `nextCursor`, which is null on the last page. `$limit`
+     * is 1-500 and defaults to 500.
      *
      * @return array<string, mixed>
      */
-    public function retrieveSeasonHostedRenewals(string $seasonKey): array
-    {
-        return $this->get($seasonKey, '/renewal-hosted');
+    public function retrieveSeasonHostedRenewals(
+        string $seasonKey,
+        ?string $cursor = null,
+        ?int $limit = null,
+    ): array {
+        return $this->get($seasonKey, '/renewal-hosted', array_filter([
+            'cursor' => $cursor,
+            'limit' => $limit,
+        ], static fn (mixed $value): bool => $value !== null));
     }
 
     /**
@@ -979,7 +1010,8 @@ final class Seasons
     }
 
     /**
-     * Email renewal invitations now, and reminders before the deadline.
+     * Email renewal invitations now, and reminders before the deadline. Up to 20,000 offer ids;
+     * more answers `422 too_many_offer_ids`.
      *
      * @param list<string>|null $offerIds Only these offers; null means every open offer.
      * @return array<string, mixed>
@@ -1131,6 +1163,24 @@ final class Seasons
     }
 
     /**
+     * Release the seats of every lapsed renewal offer, as a job. An offer extended before its
+     * turn is skipped and keeps its seat. Answers `202` with `job`; follow it with
+     * `retrieveSeasonBulkJob()`. Retried safely with one Idempotency-Key, which replays the
+     * same job.
+     *
+     * @return array<string, mixed>
+     */
+    public function releaseSeasonLapsedOffers(string $seasonKey, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/renewal-offers/release-lapsed'),
+            null,
+            $idempotencyKey,
+        );
+    }
+
+    /**
      * List the Season's bulk jobs, newest first (100 at most).
      *
      * @return array<string, mixed>
@@ -1141,7 +1191,8 @@ final class Seasons
     }
 
     /**
-     * Retrieve one bulk job with its counts and up to 500 failed items.
+     * Retrieve one bulk job with its counts, its `summary` once it completes, and up to 500
+     * failed items.
      *
      * @return array<string, mixed>
      */

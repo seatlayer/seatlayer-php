@@ -36,7 +36,7 @@ final class SeasonTest extends TestCase
         return new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 3, 30.0, $transport);
     }
 
-    public function testMapsAll86SeasonOperationsAndReplayClasses(): void
+    public function testMapsAll87SeasonOperationsAndReplayClasses(): void
     {
         /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> $calls */
         $calls = [];
@@ -181,8 +181,9 @@ final class SeasonTest extends TestCase
             'buyerName' => 'Ana Silva',
             'provider' => 'stripe',
         ], 'renew-1');
+        $seasons->releaseSeasonLapsedOffers($key, 'release-lapsed-1');
 
-        self::assertCount(86, $calls);
+        self::assertCount(87, $calls);
         $actual = array_map(static fn (array $call): array => [
             $call['method'],
             substr($call['url'], strlen('https://api.seatlayer.io')),
@@ -255,10 +256,11 @@ final class SeasonTest extends TestCase
             ['GET', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/quote'],
             ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/intent'],
             ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/checkout'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/release-lapsed'],
         ], $actual);
         self::assertNull($calls[26]['body']);
 
-        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80, 85];
+        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80, 85, 86];
         foreach ($calls as $index => $call) {
             if (in_array($index, $replayIndexes, true)) {
                 self::assertArrayHasKey('Idempotency-Key', $call['headers']);
@@ -278,6 +280,84 @@ final class SeasonTest extends TestCase
                 . '"buyerName":"Ana Silva","provider":"stripe"}',
             $calls[85]['body'],
         );
+        self::assertSame('release-lapsed-1', $calls[86]['headers']['Idempotency-Key']);
+        self::assertNull($calls[86]['body']);
+    }
+
+    /**
+     * A bulk job as the API answers it.
+     *
+     * @return array<string, mixed>
+     */
+    private static function job(string $kind): array
+    {
+        return [
+            'jobId' => 'sbj_1',
+            'kind' => $kind,
+            'state' => 'planning',
+            'counts' => ['total' => 240, 'done' => 0, 'skipped' => 0, 'failed' => 0],
+            'createdAt' => 1,
+            'updatedAt' => 1,
+            'completedAt' => null,
+        ];
+    }
+
+    public function testRenewalOfferListsSendTheirPageCursorAndLimit(): void
+    {
+        $page = ['offers' => [], 'truncated' => false, 'nextCursor' => null];
+        $seasons = $this->client(200, json_encode($page, JSON_THROW_ON_ERROR))->seasons;
+
+        $seasons->retrieveSeasonHostedRenewals('sea/a', 'c/1', 250);
+        $seasons->listSeasonRenewalOffers('sea/a', 'c/2', 50);
+        $seasons->retrieveSeasonHostedRenewals('sea_1', limit: 500);
+        self::assertSame($page, $seasons->listSeasonRenewalOffers('sea_1'));
+
+        self::assertSame([
+            'https://api.seatlayer.io/v1/seasons/sea%2Fa/renewal-hosted?cursor=c%2F1&limit=250',
+            'https://api.seatlayer.io/v1/seasons/sea%2Fa/renewal-offers?cursor=c%2F2&limit=50',
+            'https://api.seatlayer.io/v1/seasons/sea_1/renewal-hosted?limit=500',
+            'https://api.seatlayer.io/v1/seasons/sea_1/renewal-offers',
+        ], array_column($this->calls, 'url'));
+        self::assertSame(['GET', 'GET', 'GET', 'GET'], array_column($this->calls, 'method'));
+    }
+
+    public function testRenewalAtScaleAnswersJobs(): void
+    {
+        $offers = ['job' => self::job('renewal_run'), 'batchId' => 'srb_1'];
+        $seasons = $this->client(202, json_encode($offers, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame($offers, $seasons->createSeasonRenewalOffers('sea/a', ['deadlineAt' => 123], 'offers-1'));
+        self::assertSame('offers-1', $this->calls[0]['headers']['Idempotency-Key']);
+
+        $imported = ['job' => self::job('holder_import')];
+        $seasons = $this->client(202, json_encode($imported, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame($imported, $seasons->createSeasonHolderImportFromSeason(
+            'sea/a',
+            ['sourceSeasonId' => 'sea_2026', 'successorPlanActivationId' => 'pa_1'],
+            'from-season-1',
+        ));
+        self::assertSame('from-season-1', $this->calls[0]['headers']['Idempotency-Key']);
+
+        $released = ['job' => self::job('lapsed_release')];
+        $seasons = $this->client(202, json_encode($released, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame($released, $seasons->releaseSeasonLapsedOffers('sea/a'));
+        self::assertSame('POST', $this->calls[0]['method']);
+        self::assertSame(
+            'https://api.seatlayer.io/v1/seasons/sea%2Fa/renewal-offers/release-lapsed',
+            $this->calls[0]['url'],
+        );
+        self::assertNull($this->calls[0]['body']);
+        // Without a caller key one is generated, so a retry replays the same job.
+        self::assertArrayHasKey('Idempotency-Key', $this->calls[0]['headers']);
+
+        $limited = $this->client(429, '{"error":"rate_limited"}', ['retry-after' => '0'])->seasons;
+        try {
+            $limited->releaseSeasonLapsedOffers('sea_1');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(3, $this->calls);
+            $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
+            self::assertCount(1, array_unique($keys));
+        }
     }
 
     public function testRenewalDeclineReasonReachesTheWireAndTheCheckoutRetriesWithOneKey(): void

@@ -78,12 +78,13 @@ The hint is best effort, not a data-residency guarantee. See the
 
 ## Fixed Renewable Seasons
 
-`$seatlayer->seasons` exposes 86 trusted organizer operations: the 48 released in `0.7.0`,
+`$seatlayer->seasons` exposes 87 trusted organizer operations: the 48 released in `0.7.0`,
 plus performances and packages, package prices (each may name a `priceTypeKey`: `adult`,
 `child`, `concession`, `senior` or `student`), checkout tests, occurrence returns and
 reclaims, holders, season orders, hosted renewals, renewal quotes, intents and checkouts,
 sales and seat reports, CSV exports, and
-the bulk refund of a cancelled date (`refundSeasonPerformance`) with its jobs
+the bulk refund of a cancelled date (`refundSeasonPerformance`) and the release of every
+lapsed renewal offer's seats (`releaseSeasonLapsedOffers`) with their jobs
 (`listSeasonBulkJobs`, `retrieveSeasonBulkJob`).
 
 After the test hold/book/cancel journey and matching webhook deliveries,
@@ -107,6 +108,12 @@ Treat `202` as accepted work and poll `retrieveSeasonLifecycle()` with the
 returned operation identity. Buyer-session minting and domain-exact booking,
 cancellation, and renewal actions remain single-attempt; only declared
 header-replay catalogue mutations retry automatically.
+
+Above 100 contracts, `createSeasonRenewalOffers()` answers `202` with a `renewal_run` `job`
+and its `batchId` instead of `offers`; above 100 holders, `createSeasonHolderImportFromSeason()`
+answers `202` with a `holder_import` `job`. Follow either with `retrieveSeasonBulkJob()`.
+`listSeasonRenewalOffers()` and `retrieveSeasonHostedRenewals()` read one page at a time: pass
+the answer's `nextCursor` back as `$cursor` until it is null.
 
 `exportSeasonHoldersCsv()` and `exportSeasonOrdersCsv()` return the CSV text as a string,
 not decoded JSON. `deleteSeasonPlan()` returns nothing (the API answers `204`).
@@ -374,7 +381,7 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Forty
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Forty-one
 mutations use exact header replay:
 
 - `charts->create`, `charts->copy`, `templates->instantiateTemplate`, `events->create`,
@@ -386,7 +393,7 @@ mutations use exact header replay:
   `replaceSeasonPackagePrices`, `createSeasonCheckoutTest`, `createSeasonHolderImport`,
   `createSeasonHolderImportFromSeason`, `createSeasonRenewalOffers`, `createSeasonAmendment`,
   `refundSeasonOrder`, `cancelSeasonOrder`, `cancelSeasonOrderDate`,
-  `refundSeasonPerformance`, and `createSeasonRenewalCheckout`;
+  `refundSeasonPerformance`, `releaseSeasonLapsedOffers`, and `createSeasonRenewalCheckout`;
 - `holders->updateHolder`, `holders->createHolderTransfer`, `holders->createHolderReturn`,
   `holders->createHolderRenewalCheckout`, `orders->refundEventOrder`, `orders->cancelEventOrder`, `eventSeries->createEventSeries`,
   `eventSeries->addEventSeriesDates`, and `eventSeries->updateEventSeries`.
@@ -448,7 +455,7 @@ occurrence, holder, order, reporting, outbox, and support operations.
 | `webhooks` | `list` `create` `update` `delete` `listDeliveries` |
 | `workspaces` | `list` `create` `retrieve` `update` |
 | `performanceGroups` | `list` `create` `retrieve` `delete` `activate` `close` `retrieveLifecycle` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` `retrieveHold` `bookHold` `retrieveBooking` |
-| `seasons` | 86 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds and jobs, reports and CSV exports, audit, outbox, and support export |
+| `seasons` | 87 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
 
 Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
 
