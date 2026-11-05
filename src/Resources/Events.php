@@ -291,4 +291,199 @@ final class Events
             ['limit' => $limit, 'before' => $before],
         );
     }
+
+    /**
+     * Retrieve who takes payment for an event, and what blocks a change.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveEventBuyerCheckout(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/buyer-checkout');
+    }
+
+    /**
+     * Choose SeatLayer checkout or your own for an event.
+     *
+     * A compare-and-set on `$expectedRevision`, sent once.
+     *
+     * @param 'seatlayer'|'integrator' $buyerCheckout
+     * @return array<string, mixed>
+     */
+    public function replaceEventBuyerCheckout(string $eventKey, string $buyerCheckout, int $expectedRevision): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->put(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/buyer-checkout',
+            ['buyerCheckout' => $buyerCheckout, 'expectedRevision' => $expectedRevision],
+        );
+    }
+
+    /**
+     * Retrieve an event's payment gateway and the ones it could use, optionally checked
+     * against another currency.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveEventPaymentGateway(string $eventKey, ?string $currency = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/payment-gateway',
+            array_filter(['currency' => $currency], static fn (mixed $value): bool => $value !== null),
+        );
+    }
+
+    /**
+     * Assign one of the organization's connected gateways to an event. Sent once.
+     *
+     * @param array{connectionId?:?string,provider?:?string} $params
+     * @return array<string, mixed>
+     */
+    public function replaceEventPaymentGateway(string $eventKey, array $params = []): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->putObject(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/payment-gateway',
+            $params,
+        );
+    }
+
+    /**
+     * Retrieve what an event still needs before its next sales step.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveEventSalesReadiness(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/sales/readiness');
+    }
+
+    /**
+     * Record a test order as the event's sales preflight. Sent once.
+     *
+     * @return array<string, mixed>
+     */
+    public function preflightEventSales(string $eventKey, string $orderId): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/sales/preflight',
+            ['orderId' => $orderId],
+        );
+    }
+
+    /**
+     * Move an event's sales to testable, live, paused or ended.
+     *
+     * A compare-and-set on `$expectedRevision`, sent once.
+     *
+     * @param 'setup'|'testable'|'live'|'paused'|'ended' $to
+     * @return array<string, mixed>
+     */
+    public function transitionEventSales(
+        string $eventKey,
+        string $to,
+        int $expectedRevision,
+        ?string $reason = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/sales/transition',
+            array_filter([
+                'to' => $to,
+                'expectedRevision' => $expectedRevision,
+                'reason' => $reason,
+            ], static fn (mixed $value): bool => $value !== null),
+        );
+    }
+
+    /**
+     * Retrieve an event's booking fee.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveEventBookingFee(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/booking-fee');
+    }
+
+    /**
+     * Set an event's booking fee in minor units, or pass null to clear it. Sent once.
+     *
+     * @return array<string, mixed>
+     */
+    public function replaceEventBookingFee(string $eventKey, ?int $bookingFeeMinor): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->put(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/booking-fee',
+            ['bookingFeeMinor' => $bookingFeeMinor],
+        );
+    }
+
+    /**
+     * List an event's discount codes.
+     *
+     * @return array<string, mixed>
+     */
+    public function listEventDiscountCodes(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/events/' . HttpClient::encode($eventKey) . '/discount-codes');
+    }
+
+    /**
+     * Create a discount code for an event. Sent once.
+     *
+     * @param array{code:string,kind:'percent'|'amount',percent?:int,amountMinor?:int,startsAt?:?int,endsAt?:?int,maxUses?:?int,active?:bool} $params
+     * @return array<string, mixed>
+     */
+    public function createEventDiscountCode(string $eventKey, array $params): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/discount-codes',
+            $params,
+        );
+    }
+
+    /**
+     * Change or pause a discount code. Sent once.
+     *
+     * @param array{code?:string,kind?:'percent'|'amount',percent?:int,amountMinor?:int,startsAt?:?int,endsAt?:?int,maxUses?:?int,active?:bool,state?:'active'|'paused'} $params
+     * @return array<string, mixed>
+     */
+    public function updateEventDiscountCode(string $eventKey, string $codeId, array $params): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->patch(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/discount-codes/' . HttpClient::encode($codeId),
+            $params,
+        );
+    }
+
+    /**
+     * End a discount code for good.
+     *
+     * @return array<string, mixed>
+     */
+    public function endEventDiscountCode(string $eventKey, string $codeId): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->post(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/discount-codes/' . HttpClient::encode($codeId) . '/end',
+        );
+    }
+
+    /** Delete a discount code nobody has used. The API answers 204. */
+    public function deleteEventDiscountCode(string $eventKey, string $codeId): void
+    {
+        $this->http->delete(
+            '/v1/events/' . HttpClient::encode($eventKey) . '/discount-codes/' . HttpClient::encode($codeId),
+        );
+    }
 }

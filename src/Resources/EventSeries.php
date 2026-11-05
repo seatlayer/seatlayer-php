@@ -1,0 +1,92 @@
+<?php
+
+declare(strict_types=1);
+
+namespace SeatLayer\Resources;
+
+use SeatLayer\HttpClient;
+
+/**
+ * Event series: many dated events planned from one schedule.
+ *
+ * A schedule is `rule` ('none', 'daily', 'weekly', 'biweekly' or 'dates') and `times`
+ * (`HH:MM` start times), with `from`, `until` or `count`, `skip`, and `dates` as the API
+ * describes them.
+ */
+final class EventSeries
+{
+    public function __construct(private readonly HttpClient $http)
+    {
+    }
+
+    /**
+     * Plan an event series from a schedule (`dryRun`), or make it as a job.
+     *
+     * @param array{name:string,chartKey:string,schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>},timezone?:string,venue?:string,durationMinutes?:int,dryRun?:bool} $params
+     * @return array<string, mixed>
+     */
+    public function createEventSeries(array $params, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay('/v1/event-series', $params, $idempotencyKey);
+    }
+
+    /**
+     * List event series, one page at a time.
+     *
+     * @return array<string, mixed>
+     */
+    public function listEventSeries(?int $limit = null, ?string $cursor = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/event-series', array_filter([
+            'limit' => $limit,
+            'cursor' => $cursor,
+        ], static fn (mixed $value): bool => $value !== null));
+    }
+
+    /**
+     * Retrieve an event series, its dates and its job.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveEventSeries(string $eventKey): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->get('/v1/event-series/' . HttpClient::encode($eventKey));
+    }
+
+    /**
+     * Add dates to an event series, copied from its first date: either a `schedule` or
+     * exact `dates` (`YYYY-MM-DDTHH:MM` in the series' zone).
+     *
+     * @param array{schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>}}|array{dates:list<string>} $params
+     * @return array<string, mixed>
+     */
+    public function addEventSeriesDates(string $eventKey, array $params, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            '/v1/event-series/' . HttpClient::encode($eventKey) . '/dates',
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Change the name, prices or sales of every upcoming date.
+     *
+     * @param array{name?:string,prices?:array{categories:list<array{key:string,price?:int|float|null,tiers?:list<array{id:string,price:int|float}>}>},sales?:'on'|'off'} $params
+     * @return array<string, mixed>
+     */
+    public function updateEventSeries(string $eventKey, array $params, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->mutationWithHeaderReplay(
+            'PATCH',
+            '/v1/event-series/' . HttpClient::encode($eventKey),
+            $params,
+            $idempotencyKey,
+        );
+    }
+}
