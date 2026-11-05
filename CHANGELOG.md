@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- Added the 32 remaining Season organizer operations to `$seatlayer->seasons`, which now
+  has 80: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
+  `updateSeasonPlan`, `deleteSeasonPlan`, `publishSeason`, and more), package prices,
+  checkout tests, occurrence returns and reclaims, `listSeasonHolders`, season order refunds,
+  cancellations and resends, hosted renewals, renewal links, contacts and notices, the sales,
+  seats and seat-count reports, and holder and order CSV exports.
+- Added `$seatlayer->holders` (holder reads and updates, `listCustomers`, session sign-out,
+  tickets, and ticket transfers), `$seatlayer->orders` (orders across events and seasons, and
+  one event's orders with refund, cancel, resend, and CSV export), and `$seatlayer->eventSeries`
+  (plan a series from a schedule, add dates, change every upcoming date).
+- Added event sales settings to `$seatlayer->events`: buyer checkout, payment gateway, sales
+  readiness, preflight and transitions, booking fee, and discount codes.
+- Replay-backed operations send an `Idempotency-Key` (yours, or a generated one reused on
+  retry), as before; every other new mutation is sent once. The CSV exports return the CSV
+  text as a string, and the two `204` deletes return nothing.
+
 ## 0.8.0 (2026-09-10)
 
 - Added Event hosting regions: `$region` on event create, `$defaultRegion` on workspace create and update, and the `EventHostingRegion` constants. Events created without a region run in Western Europe.
