@@ -69,6 +69,7 @@ final class SalesOperationsTest extends TestCase
         $holders->listHolderTransfers('H/1');
         $holders->cancelHolderTransfer('H/1', 'xfer/1');
         $holders->acceptHolderTransfer('H/1', 'xfer/1');
+        $holders->createHolderReturn('H/1', ['tkt_0123456789abcdef01234567'], 'return-1');
 
         self::assertSame([
             ['GET', '/v1/customers?email=ada%40example.com&holderRef=H%2F1&cursor=c%2F1&limit=10', null, false],
@@ -93,9 +94,11 @@ final class SalesOperationsTest extends TestCase
             ['GET', '/v1/holders/H%2F1/transfers', null, false],
             ['POST', '/v1/holders/H%2F1/transfers/xfer%2F1/cancel', null, false],
             ['POST', '/v1/holders/H%2F1/transfers/xfer%2F1/accept', null, false],
+            ['POST', '/v1/holders/H%2F1/returns', '{"ticketIds":["tkt_0123456789abcdef01234567"]}', true],
         ], $this->recorded());
         self::assertSame('holder-update-1', $this->calls[2]['headers']['Idempotency-Key']);
         self::assertSame('transfer-1', $this->calls[8]['headers']['Idempotency-Key']);
+        self::assertSame('return-1', $this->calls[12]['headers']['Idempotency-Key']);
     }
 
     public function testOrderOperations(): void
@@ -270,6 +273,29 @@ final class SalesOperationsTest extends TestCase
         self::assertSame('series-1', $this->calls[0]['headers']['Idempotency-Key']);
         self::assertSame('dates-1', $this->calls[3]['headers']['Idempotency-Key']);
         self::assertSame('series-update-1', $this->calls[4]['headers']['Idempotency-Key']);
+    }
+
+    public function testHolderReturnRetriesWithOneKey(): void
+    {
+        $sdk = $this->client(429, '{"error":"rate_limited"}', ['retry-after' => '0']);
+
+        try {
+            $sdk->holders->createHolderReturn('a/b', ['tkt_0123456789abcdef01234567']);
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            $attempt = ['POST', '/v1/holders/a%2Fb/returns', '{"ticketIds":["tkt_0123456789abcdef01234567"]}', true];
+            self::assertSame([$attempt, $attempt, $attempt], $this->recorded());
+            $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
+            self::assertCount(1, array_unique($keys));
+        }
+
+        try {
+            $sdk->holders->createHolderReturn('a/b', ['tkt_0123456789abcdef01234567'], 'return-1');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
+            self::assertSame(['return-1', 'return-1', 'return-1'], array_slice($keys, 3));
+        }
     }
 
     public function testReplayMutationsRetryWithOneKeyAndUnsupportedOnesAreSentOnce(): void

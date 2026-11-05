@@ -12,6 +12,7 @@
   tickets, and ticket transfers), `$seatlayer->orders` (orders across events and seasons, and
   one event's orders with refund, cancel, resend, and CSV export), and `$seatlayer->eventSeries`
   (plan a series from a schedule, add dates, change every upcoming date).
+- Added `holders->createHolderReturn`: give back a holder's seat on one date, one per ticket.
 - Added event sales settings to `$seatlayer->events`: buyer checkout, payment gateway, sales
   readiness, preflight and transitions, booking fee, and discount codes.
 - Replay-backed operations send an `Idempotency-Key` (yours, or a generated one reused on

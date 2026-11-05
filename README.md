@@ -348,7 +348,7 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Thirty-six
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Thirty-seven
 mutations use exact header replay:
 
 - `charts->create`, `charts->copy`, `templates->instantiateTemplate`, `events->create`,
@@ -360,8 +360,8 @@ mutations use exact header replay:
   `replaceSeasonPackagePrices`, `createSeasonCheckoutTest`, `createSeasonHolderImport`,
   `createSeasonHolderImportFromSeason`, `createSeasonRenewalOffers`, `createSeasonAmendment`,
   `refundSeasonOrder`, `cancelSeasonOrder`, and `cancelSeasonOrderDate`;
-- `holders->updateHolder`, `holders->createHolderTransfer`, `orders->refundEventOrder`,
-  `orders->cancelEventOrder`, `eventSeries->createEventSeries`,
+- `holders->updateHolder`, `holders->createHolderTransfer`, `holders->createHolderReturn`,
+  `orders->refundEventOrder`, `orders->cancelEventOrder`, `eventSeries->createEventSeries`,
   `eventSeries->addEventSeriesDates`, and `eventSeries->updateEventSeries`.
 
 They generate an `Idempotency-Key` when absent and reuse that key across every attempt. You can
@@ -414,7 +414,7 @@ occurrence, holder, order, reporting, outbox, and support operations.
 | `events` | `list` `listAll` `create` `retrieve` `retrieveConfigurationBinding` `updateConfigurationBinding` `update` `delete` `updateChart` `close` `reopen` `archive` `retrieveHoldTtl` `updateHoldTtl` `listTicketReleases` `updateTicketReleases` `closeTicketRelease` `retrieveReport` `retrieveLog` `retrieveEventBuyerCheckout` `replaceEventBuyerCheckout` `retrieveEventPaymentGateway` `replaceEventPaymentGateway` `retrieveEventSalesReadiness` `preflightEventSales` `transitionEventSales` `retrieveEventBookingFee` `replaceEventBookingFee` `listEventDiscountCodes` `createEventDiscountCode` `updateEventDiscountCode` `endEventDiscountCode` `deleteEventDiscountCode` |
 | `eventSeries` | `createEventSeries` `listEventSeries` `retrieveEventSeries` `addEventSeriesDates` `updateEventSeries` |
 | `orders` | `listOrders` `retrieveOrder` `listOrderTickets` `listEventOrders` `retrieveEventOrder` `exportEventOrdersCsv` `refundEventOrder` `cancelEventOrder` `resendEventOrderTickets` |
-| `holders` | `listCustomers` `retrieveHolder` `updateHolder` `revokeHolderSessions` `listHolderSeasons` `listHolderTickets` `retrieveHolderTicket` `createHolderTransfer` `listHolderTransfers` `cancelHolderTransfer` `acceptHolderTransfer` |
+| `holders` | `listCustomers` `retrieveHolder` `updateHolder` `revokeHolderSessions` `listHolderSeasons` `listHolderTickets` `retrieveHolderTicket` `createHolderTransfer` `listHolderTransfers` `cancelHolderTransfer` `acceptHolderTransfer` `createHolderReturn` |
 | `channels` | `listChannels` `createChannel` `updateChannel` `updateAssignments` `listAllocation` `retrieveAccessPreview` `retrieveReport` `pause` `unpause` `archive` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` |
 | `inventory` | `hold` `holdBestAvailable` `bookBestAvailable` `extendHold` `retrieveHold` `release` `book` `boxOfficeBook` `unbook` `block` `unblock` `unblockAll` `retrieveAvailability` `updateAvailability` `listBookings` `retrieveBooking` |
 | `sessions` | `createManageSession` `revokeManageSession` `createDesignerSession` `revokeDesignerSession` |

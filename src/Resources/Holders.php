@@ -6,7 +6,7 @@ namespace SeatLayer\Resources;
 
 use SeatLayer\HttpClient;
 
-/** Season ticket holders, the customers behind them, and holder ticket transfers. */
+/** Season ticket holders, the customers behind them, and holder ticket transfers and returns. */
 final class Holders
 {
     public function __construct(private readonly HttpClient $http)
@@ -180,6 +180,28 @@ final class Holders
         /** @var array<string, mixed> */
         return (array) $this->http->post(
             self::path($holderRef, '/transfers/' . HttpClient::encode($transferId) . '/accept'),
+        );
+    }
+
+    /**
+     * Give back a holder's seat on one date, one per ticket.
+     *
+     * Takes 1 to 20 tickets, all of one season. A repeat with the same key answers with the
+     * same return.
+     *
+     * @param list<string> $ticketIds
+     * @return array<string, mixed>
+     */
+    public function createHolderReturn(
+        string $holderRef,
+        array $ticketIds,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($holderRef, '/returns'),
+            ['ticketIds' => $ticketIds],
+            $idempotencyKey,
         );
     }
 }
