@@ -70,6 +70,14 @@ final class SalesOperationsTest extends TestCase
         $holders->cancelHolderTransfer('H/1', 'xfer/1');
         $holders->acceptHolderTransfer('H/1', 'xfer/1');
         $holders->createHolderReturn('H/1', ['tkt_0123456789abcdef01234567'], 'return-1');
+        $holders->createHolderRenewalCheckout('H/1', 'offer/1', [
+            'returnUrl' => 'https://tickets.example/renewed',
+            'buyerEmail' => 'cara@example.com',
+            'buyerName' => 'Cara',
+            'provider' => 'stripe',
+        ], 'renew-1');
+        $holders->declineHolderRenewalOffer('H/1', 'offer/1', 'Moving away');
+        $holders->declineHolderRenewalOffer('H/1', 'offer/1');
 
         self::assertSame([
             ['GET', '/v1/customers?email=ada%40example.com&holderRef=H%2F1&cursor=c%2F1&limit=10', null, false],
@@ -95,10 +103,20 @@ final class SalesOperationsTest extends TestCase
             ['POST', '/v1/holders/H%2F1/transfers/xfer%2F1/cancel', null, false],
             ['POST', '/v1/holders/H%2F1/transfers/xfer%2F1/accept', null, false],
             ['POST', '/v1/holders/H%2F1/returns', '{"ticketIds":["tkt_0123456789abcdef01234567"]}', true],
+            [
+                'POST',
+                '/v1/holders/H%2F1/renewal-offers/offer%2F1/checkout',
+                '{"returnUrl":"https:\\/\\/tickets.example\\/renewed","buyerEmail":"cara@example.com",'
+                    . '"buyerName":"Cara","provider":"stripe"}',
+                true,
+            ],
+            ['POST', '/v1/holders/H%2F1/renewal-offers/offer%2F1/decline', '{"reason":"Moving away"}', false],
+            ['POST', '/v1/holders/H%2F1/renewal-offers/offer%2F1/decline', '{}', false],
         ], $this->recorded());
         self::assertSame('holder-update-1', $this->calls[2]['headers']['Idempotency-Key']);
         self::assertSame('transfer-1', $this->calls[8]['headers']['Idempotency-Key']);
         self::assertSame('return-1', $this->calls[12]['headers']['Idempotency-Key']);
+        self::assertSame('renew-1', $this->calls[13]['headers']['Idempotency-Key']);
     }
 
     public function testOrderOperations(): void
@@ -295,6 +313,35 @@ final class SalesOperationsTest extends TestCase
         } catch (RateLimitException) {
             $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
             self::assertSame(['return-1', 'return-1', 'return-1'], array_slice($keys, 3));
+        }
+    }
+
+    public function testHolderRenewalCheckoutRetriesWithOneKeyAndDeclineIsSentOnce(): void
+    {
+        $sdk = $this->client(429, '{"error":"rate_limited"}', ['retry-after' => '0']);
+
+        try {
+            $sdk->holders->createHolderRenewalCheckout('a/b', 'offer_1', ['returnUrl' => 'https://tickets.example/r']);
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            $attempt = [
+                'POST',
+                '/v1/holders/a%2Fb/renewal-offers/offer_1/checkout',
+                '{"returnUrl":"https:\\/\\/tickets.example\\/r"}',
+                true,
+            ];
+            self::assertSame([$attempt, $attempt, $attempt], $this->recorded());
+            $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
+            self::assertCount(1, array_unique($keys));
+        }
+
+        try {
+            $sdk->holders->declineHolderRenewalOffer('a/b', 'offer_1', 'Moving away');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(4, $this->calls);
+            self::assertArrayNotHasKey('Idempotency-Key', $this->calls[3]['headers']);
+            self::assertSame('{"reason":"Moving away"}', $this->calls[3]['body']);
         }
     }
 

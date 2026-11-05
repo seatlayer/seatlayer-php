@@ -6,7 +6,7 @@ namespace SeatLayer\Resources;
 
 use SeatLayer\HttpClient;
 
-/** Season ticket holders, the customers behind them, and holder ticket transfers and returns. */
+/** Season ticket holders, the customers behind them, and holder ticket transfers, returns and renewals. */
 final class Holders
 {
     public function __construct(private readonly HttpClient $http)
@@ -202,6 +202,46 @@ final class Holders
             self::path($holderRef, '/returns'),
             ['ticketIds' => $ticketIds],
             $idempotencyKey,
+        );
+    }
+
+    /**
+     * Start a SeatLayer checkout that renews one of a holder's offers (`renewalOffer` on
+     * `listHolderSeasons`).
+     *
+     * Send the buyer to `payment.url`. A repeat with the same key answers the same order.
+     *
+     * @param array{returnUrl:string,buyerEmail?:string,buyerName?:string,provider?:string} $params
+     * @return array<string, mixed>
+     */
+    public function createHolderRenewalCheckout(
+        string $holderRef,
+        string $offerId,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($holderRef, '/renewal-offers/' . HttpClient::encode($offerId) . '/checkout'),
+            $params,
+            $idempotencyKey,
+        );
+    }
+
+    /**
+     * Decline one of a holder's renewal offers and release its seats.
+     *
+     * `$reason` (1 to 200 characters) is kept on the offer as `declineReason`; declining again
+     * answers the same offer, with the first reason. Single-attempt.
+     *
+     * @return array<string, mixed>
+     */
+    public function declineHolderRenewalOffer(string $holderRef, string $offerId, ?string $reason = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postObject(
+            self::path($holderRef, '/renewal-offers/' . HttpClient::encode($offerId) . '/decline'),
+            array_filter(['reason' => $reason], static fn (mixed $value): bool => $value !== null),
         );
     }
 }

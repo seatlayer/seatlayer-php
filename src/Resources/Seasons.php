@@ -399,13 +399,20 @@ final class Seasons
         );
     }
 
-    /** @return array<string, mixed> */
-    public function declineSeasonRenewalOffer(string $seasonKey, string $offerId): array
+    /**
+     * Decline a renewal offer and release its seats at once.
+     *
+     * `$reason` (1 to 200 characters) is kept on the offer as `declineReason`; a repeated
+     * decline keeps the first reason. Null sends none.
+     *
+     * @return array<string, mixed>
+     */
+    public function declineSeasonRenewalOffer(string $seasonKey, string $offerId, ?string $reason = null): array
     {
         return $this->post(
             $seasonKey,
             '/renewal-offers/' . HttpClient::encode($offerId) . '/decline',
-            [],
+            array_filter(['reason' => $reason], static fn (mixed $value): bool => $value !== null),
         );
     }
 
@@ -989,6 +996,59 @@ final class Seasons
             $seasonKey,
             '/renewal-offers/' . HttpClient::encode($offerId) . '/resend',
             [],
+        );
+    }
+
+    /**
+     * Retrieve what renewing an offer costs, priced as the SeatLayer checkout will charge it.
+     *
+     * `problem` is null when SeatLayer checkout can take the renewal now; otherwise it says why
+     * not.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonRenewalQuote(string $seasonKey, string $offerId): array
+    {
+        return $this->get($seasonKey, '/renewal-offers/' . HttpClient::encode($offerId) . '/quote');
+    }
+
+    /**
+     * Record that the holder means to renew, for a renewal taken by phone or at the box office,
+     * so your own checkout can commit the offer.
+     *
+     * Single-attempt; a repeat answers the same offer.
+     *
+     * @return array<string, mixed>
+     */
+    public function createSeasonRenewalIntent(string $seasonKey, string $offerId): array
+    {
+        return $this->post(
+            $seasonKey,
+            '/renewal-offers/' . HttpClient::encode($offerId) . '/intent',
+            [],
+        );
+    }
+
+    /**
+     * Start a SeatLayer checkout that renews an offer, with no hosted page.
+     *
+     * Send the buyer to `payment.url`; paying renews the offer. `returnUrl` must be on one of
+     * the organization's allowed domains. A repeat with the same key answers the same order.
+     *
+     * @param array{returnUrl:string,buyerEmail?:string,buyerName?:string,provider?:string} $params
+     * @return array<string, mixed>
+     */
+    public function createSeasonRenewalCheckout(
+        string $seasonKey,
+        string $offerId,
+        array $params,
+        ?string $idempotencyKey = null,
+    ): array {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(
+            self::path($seasonKey, '/renewal-offers/' . HttpClient::encode($offerId) . '/checkout'),
+            $params,
+            $idempotencyKey,
         );
     }
 

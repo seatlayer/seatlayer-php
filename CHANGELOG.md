@@ -2,11 +2,12 @@
 
 ## Unreleased
 
-- Added the 35 remaining Season organizer operations to `$seatlayer->seasons`, which now
-  has 83: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
+- Added the 38 remaining Season organizer operations to `$seatlayer->seasons`, which now
+  has 86: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
   `updateSeasonPlan`, `deleteSeasonPlan`, `publishSeason`, and more), package prices,
   checkout tests, occurrence returns and reclaims, `listSeasonHolders`, season order refunds,
-  cancellations and resends, hosted renewals, renewal links, contacts and notices, the sales,
+  cancellations and resends, hosted renewals, renewal links, contacts and notices, renewal
+  quotes, intents and checkouts, the sales,
   seats and seat-count reports, holder and order CSV exports, and bulk refunds with their jobs.
 - Added `$seatlayer->holders` (holder reads and updates, `listCustomers`, session sign-out,
   tickets, and ticket transfers), `$seatlayer->orders` (orders across events and seasons, and
@@ -26,6 +27,12 @@
 - `updateSeason` types `checkoutMode`, `transferCutoffHours`, and `returnCutoffHours`.
 - `createSeasonHolderImport` documents `holderEmail` and `holderName` on each row.
 - `events->list` and `events->listAll` take `seriesKey` to list one event series' dates.
+- Added `seasons->retrieveSeasonRenewalQuote`: what renewing an offer costs, and whether SeatLayer checkout can take it now.
+- Added `seasons->createSeasonRenewalIntent`: record a holder's intent for a renewal taken by phone or at the box office, so your own checkout can commit.
+- Added `seasons->createSeasonRenewalCheckout`: a SeatLayer checkout that renews an offer with no hosted page, with header replay.
+- Added `holders->createHolderRenewalCheckout`: the same checkout for one of a holder's offers, with header replay.
+- Added `holders->declineHolderRenewalOffer`: decline one of a holder's offers, with an optional reason.
+- `seasons->declineSeasonRenewalOffer` takes an optional `$reason`, kept on the offer as `declineReason`.
 
 ## 0.8.0 (2026-09-10)
 

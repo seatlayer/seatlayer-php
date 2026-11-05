@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace SeatLayer\Tests;
 
 use PHPUnit\Framework\TestCase;
+use SeatLayer\RateLimitException;
 use SeatLayer\SeatLayer;
 
 final class SeasonTest extends TestCase
@@ -12,8 +13,12 @@ final class SeasonTest extends TestCase
     /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> */
     private array $calls = [];
 
-    /** A client whose transport records every request and answers with one fixed response. */
-    private function client(int $status = 200, string $body = '{}'): SeatLayer
+    /**
+     * A client whose transport records every request and answers with one fixed response.
+     *
+     * @param array<string, string> $responseHeaders
+     */
+    private function client(int $status = 200, string $body = '{}', array $responseHeaders = []): SeatLayer
     {
         $this->calls = [];
         $transport = function (
@@ -22,16 +27,16 @@ final class SeasonTest extends TestCase
             array $headers,
             ?string $payload,
             float $_timeout,
-        ) use ($status, $body): array {
+        ) use ($status, $body, $responseHeaders): array {
             $this->calls[] = ['method' => $method, 'url' => $url, 'headers' => $headers, 'body' => $payload];
 
-            return ['status' => $status, 'body' => $body, 'headers' => []];
+            return ['status' => $status, 'body' => $body, 'headers' => $responseHeaders];
         };
 
         return new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 3, 30.0, $transport);
     }
 
-    public function testMapsAll83SeasonOperationsAndReplayClasses(): void
+    public function testMapsAll86SeasonOperationsAndReplayClasses(): void
     {
         /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> $calls */
         $calls = [];
@@ -168,8 +173,16 @@ final class SeasonTest extends TestCase
         $seasons->refundSeasonPerformance($key, 'ev/1', ['amount' => 'per_date', 'reason' => 'Storm'], 'refund-date-1');
         $seasons->listSeasonBulkJobs($key);
         $seasons->retrieveSeasonBulkJob($key, 'job/1');
+        $seasons->retrieveSeasonRenewalQuote($key, 'offer/1');
+        $seasons->createSeasonRenewalIntent($key, 'offer/1');
+        $seasons->createSeasonRenewalCheckout($key, 'offer/1', [
+            'returnUrl' => 'https://tickets.example/renewed',
+            'buyerEmail' => 'ana@example.com',
+            'buyerName' => 'Ana Silva',
+            'provider' => 'stripe',
+        ], 'renew-1');
 
-        self::assertCount(83, $calls);
+        self::assertCount(86, $calls);
         $actual = array_map(static fn (array $call): array => [
             $call['method'],
             substr($call['url'], strlen('https://api.seatlayer.io')),
@@ -239,10 +252,13 @@ final class SeasonTest extends TestCase
             ['GET', '/v1/seasons/sea%2Fa/reports/orders.csv'], ['GET', '/v1/seasons/sea%2Fa/seat-counts'],
             ['POST', '/v1/seasons/sea%2Fa/performances/ev%2F1/refunds'],
             ['GET', '/v1/seasons/sea%2Fa/jobs'], ['GET', '/v1/seasons/sea%2Fa/jobs/job%2F1'],
+            ['GET', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/quote'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/intent'],
+            ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/checkout'],
         ], $actual);
         self::assertNull($calls[26]['body']);
 
-        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80];
+        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80, 85];
         foreach ($calls as $index => $call) {
             if (in_array($index, $replayIndexes, true)) {
                 self::assertArrayHasKey('Idempotency-Key', $call['headers']);
@@ -254,6 +270,48 @@ final class SeasonTest extends TestCase
         self::assertSame('date-cancel-1', $calls[68]['headers']['Idempotency-Key']);
         self::assertSame('refund-date-1', $calls[80]['headers']['Idempotency-Key']);
         self::assertSame('{"amount":"per_date","reason":"Storm"}', $calls[80]['body']);
+        self::assertNull($calls[83]['body']);
+        self::assertSame('{}', $calls[84]['body']);
+        self::assertSame('renew-1', $calls[85]['headers']['Idempotency-Key']);
+        self::assertSame(
+            '{"returnUrl":"https:\\/\\/tickets.example\\/renewed","buyerEmail":"ana@example.com",'
+                . '"buyerName":"Ana Silva","provider":"stripe"}',
+            $calls[85]['body'],
+        );
+    }
+
+    public function testRenewalDeclineReasonReachesTheWireAndTheCheckoutRetriesWithOneKey(): void
+    {
+        $seasons = $this->client()->seasons;
+
+        $seasons->declineSeasonRenewalOffer('sea/a', 'offer/1', 'Moving away');
+        $seasons->declineSeasonRenewalOffer('sea_1', 'offer_1');
+
+        self::assertSame([
+            'https://api.seatlayer.io/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/decline',
+            'https://api.seatlayer.io/v1/seasons/sea_1/renewal-offers/offer_1/decline',
+        ], array_column($this->calls, 'url'));
+        self::assertSame(['{"reason":"Moving away"}', '{}'], array_column($this->calls, 'body'));
+        self::assertArrayNotHasKey('Idempotency-Key', $this->calls[0]['headers']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->calls[1]['headers']);
+
+        $limited = $this->client(429, '{"error":"rate_limited"}', ['retry-after' => '0'])->seasons;
+        try {
+            $limited->createSeasonRenewalCheckout('sea_1', 'offer_1', ['returnUrl' => 'https://tickets.example/r']);
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(3, $this->calls);
+            $keys = array_map(static fn (array $call): string => $call['headers']['Idempotency-Key'], $this->calls);
+            self::assertCount(1, array_unique($keys));
+        }
+
+        try {
+            $limited->createSeasonRenewalIntent('sea_1', 'offer_1');
+            self::fail('expected RateLimitException');
+        } catch (RateLimitException) {
+            self::assertCount(4, $this->calls);
+            self::assertArrayNotHasKey('Idempotency-Key', $this->calls[3]['headers']);
+        }
     }
 
     public function testPriceTypesSaleSettingsHolderContactsAndDateCancelsReachTheWire(): void
