@@ -89,6 +89,10 @@ final class EventSeries
      * `prices.categories` takes only the categories whose price changes (for a tiered category,
      * only the tiers sent). Every price left out keeps each date's own value.
      *
+     * `sales` `on` never opens a date its season cancelled: that date is a failed item of the job
+     * (`season_date_cancelled`), counted in the job's `failed` but not in `failedDates`, which
+     * are the dates that could not be made.
+     *
      * @param array{name?:string,prices?:array{categories:non-empty-list<array{key:string,price?:int|float|null,tiers?:list<array{id:string,price:int|float}>}>},sales?:'on'|'off'} $params
      * @return array<string, mixed>
      */

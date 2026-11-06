@@ -497,7 +497,8 @@ final class Seasons
      * order refund. A `cancel` also voids every live ticket for the date as a `date_cancel_void`
      * job, which the answer does not name: it is
      * `Seasons::dateCancelVoidJobId($answer['amendment']['amendmentId'])`, followed with
-     * `retrieveSeasonBulkJob()`.
+     * `retrieveSeasonBulkJob()`. A cancelled date can't be moved (`reschedule`), postponed or
+     * replaced: `409 performance_cancelled`.
      *
      * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date',reason?:string} $params
      * @return array<string, mixed>
@@ -823,7 +824,8 @@ final class Seasons
     }
 
     /**
-     * Mark a performance past so it stops blocking new Season sales.
+     * Mark a performance past so it stops blocking new Season sales. A cancelled date answers
+     * `409 performance_cancelled`.
      *
      * @return array<string, mixed>
      */

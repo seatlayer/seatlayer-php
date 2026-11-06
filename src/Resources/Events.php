@@ -222,6 +222,10 @@ final class Events
         return $this->http->post('/v1/events/' . HttpClient::encode($eventKey) . '/close');
     }
 
+    /**
+     * Open a paused event's sales again. A date its season cancelled never opens again:
+     * `409 season_date_cancelled`.
+     */
     public function reopen(string $eventKey): mixed
     {
         return $this->http->post('/v1/events/' . HttpClient::encode($eventKey) . '/reopen');
@@ -382,7 +386,8 @@ final class Events
     /**
      * Move an event's sales to testable, live, paused or ended.
      *
-     * A compare-and-set on `$expectedRevision`, sent once.
+     * A compare-and-set on `$expectedRevision`, sent once. A date its season cancelled never
+     * opens again: moving it to `testable` or `live` answers `409 season_date_cancelled`.
      *
      * @param 'setup'|'testable'|'live'|'paused'|'ended' $to
      * @return array<string, mixed>
