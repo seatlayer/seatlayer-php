@@ -422,6 +422,22 @@ final class ClientTest extends TestCase
         );
     }
 
+    public function testBulkRefundOfADateRetriesWithOneKey(): void
+    {
+        $sdk = $this->client([
+            ['status' => 429, 'body' => ['error' => 'rate_limited'], 'headers' => ['retry-after' => '0']],
+            ['status' => 202, 'body' => ['job' => ['jobId' => 'sbj_1']]],
+        ]);
+        $result = $sdk->seasons->refundSeasonPerformance('sea_1', 'ev_1', ['amount' => 'per_date']);
+
+        self::assertSame(['job' => ['jobId' => 'sbj_1']], $result);
+        self::assertCount(2, $this->calls);
+        self::assertSame(
+            $this->call(0)['headers']['Idempotency-Key'],
+            $this->call(1)['headers']['Idempotency-Key'],
+        );
+    }
+
     public function testReadRetriesRemainEnabled(): void
     {
         $sdk = $this->client([
@@ -570,6 +586,19 @@ final class ClientTest extends TestCase
         $sdk = $this->client([['status' => 200, 'body' => ['events' => []]]]);
         iterator_to_array($sdk->events->listAll());
         self::assertStringContainsString('counts=0', $this->call(0)['url']);
+    }
+
+    public function testEventsFilterBySeries(): void
+    {
+        $sdk = $this->client([
+            ['status' => 200, 'body' => ['events' => []]],
+            ['status' => 200, 'body' => ['events' => []]],
+        ]);
+        $sdk->events->list(limit: 10, seriesKey: 'ser a/b');
+        iterator_to_array($sdk->events->listAll(seriesKey: 'ser_1'));
+
+        self::assertSame('https://api.seatlayer.io/v1/events?limit=10&seriesKey=ser+a%2Fb', $this->call(0)['url']);
+        self::assertSame('https://api.seatlayer.io/v1/events?counts=0&seriesKey=ser_1', $this->call(1)['url']);
     }
 
     public function testSinglePageKeepsCounts(): void

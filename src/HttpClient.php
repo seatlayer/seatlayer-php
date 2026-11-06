@@ -98,6 +98,7 @@ final class HttpClient
         bool $headerReplay,
         ?string $idempotencyKey,
         ?string $contentType = null,
+        bool $rawText = false,
     ): mixed {
         $url = $this->baseUrl . $path;
         if ($query !== null) {
@@ -109,7 +110,8 @@ final class HttpClient
 
         $headers = [
             'Authorization' => 'Bearer ' . $this->secretKey,
-            'Accept' => 'application/json',
+            // Errors are JSON even on a text route, so a text read accepts both.
+            'Accept' => $rawText ? 'text/csv, application/json' : 'application/json',
             'User-Agent' => 'seatlayer-php',
         ];
 
@@ -142,6 +144,9 @@ final class HttpClient
 
             $status = $response['status'];
             if ($status >= 200 && $status < 300) {
+                if ($rawText) {
+                    return $response['body'];
+                }
                 if ($status === 204 || $response['body'] === '') {
                     return null;
                 }
@@ -174,6 +179,18 @@ final class HttpClient
     public function get(string $path, ?array $query = null): mixed
     {
         return $this->request('GET', $path, $query);
+    }
+
+    /**
+     * GET a text body, such as a CSV export, and return it as sent, without JSON decoding.
+     *
+     * @param array<string, mixed>|null $query
+     */
+    public function getText(string $path, ?array $query = null): string
+    {
+        $body = $this->performRequest('GET', $path, $query, null, false, null, null, true);
+
+        return is_string($body) ? $body : '';
     }
 
     /** @param array<string, mixed>|null $body */
@@ -232,6 +249,16 @@ final class HttpClient
     public function put(string $path, array $body): mixed
     {
         return $this->performRequest('PUT', $path, null, $body, false, null);
+    }
+
+    /**
+     * PUT a JSON object without automatic retries, including `{}` when empty.
+     *
+     * @param array<string, mixed> $body
+     */
+    public function putObject(string $path, array $body = []): mixed
+    {
+        return $this->performRequest('PUT', $path, null, (object) $body, false, null);
     }
 
     /** Upload raw poster bytes without JSON/base64 transformation. */
