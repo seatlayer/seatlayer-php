@@ -360,6 +360,34 @@ final class SeasonTest extends TestCase
         }
     }
 
+    public function testSingleTicketsReachTheWireOnCreateAndUpdate(): void
+    {
+        $updated = [
+            'season' => ['key' => 'sea_1', 'singleTickets' => true],
+            'singleTicketDates' => [
+                'direction' => 'open',
+                'opened' => ['ev_1'],
+                'closed' => [],
+                'notOpened' => [],
+                'jobId' => null,
+            ],
+        ];
+        $seasons = $this->client(200, json_encode($updated, JSON_THROW_ON_ERROR))->seasons;
+
+        $seasons->createSeason(['name' => 'Series', 'eventKeys' => ['ev_1', 'ev_2'], 'singleTickets' => true]);
+        $answer = $seasons->updateSeason('sea/a', ['expectedRevision' => 5, 'singleTickets' => false], 'update-1');
+
+        self::assertSame($updated, $answer);
+        self::assertSame(['POST', 'PATCH'], array_column($this->calls, 'method'));
+        self::assertSame([
+            'https://api.seatlayer.io/v1/seasons',
+            'https://api.seatlayer.io/v1/seasons/sea%2Fa',
+        ], array_column($this->calls, 'url'));
+        self::assertSame('{"name":"Series","eventKeys":["ev_1","ev_2"],"singleTickets":true}', $this->calls[0]['body']);
+        self::assertSame('{"expectedRevision":5,"singleTickets":false}', $this->calls[1]['body']);
+        self::assertSame('update-1', $this->calls[1]['headers']['Idempotency-Key']);
+    }
+
     public function testRenewalNoticesForOneOfferBatchSendItsBatchId(): void
     {
         $answer = ['scheduled' => 240, 'withoutEmail' => 3];

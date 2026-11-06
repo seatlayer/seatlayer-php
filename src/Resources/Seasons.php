@@ -65,7 +65,10 @@ final class Seasons
     }
 
     /**
-     * @param array{name:string,edition?:?string,eventKeys?:list<string>,sourcePerformanceGroupKeys?:list<string>} $params
+     * Create a draft Season. `singleTickets` true makes each date also sell its own single
+     * tickets once the Season is on sale; the default is Season only.
+     *
+     * @param array{name:string,edition?:?string,eventKeys?:list<string>,sourcePerformanceGroupKeys?:list<string>,singleTickets?:bool} $params
      * @return array<string, mixed>
      */
     public function createSeason(array $params, ?string $idempotencyKey = null): array
@@ -87,9 +90,11 @@ final class Seasons
      * live booking exists. The cutoffs are hours before a date starts (0 to 720) after which its
      * tickets can no longer be sent to others, or a seat given back; `null` means until it starts.
      * `audience` `public` lists the Season on your SeatLayer website; an ended Season cannot
-     * become public (`409 sales_ended`).
+     * become public (`409 sales_ended`). `singleTickets` turned on while the Season is on sale
+     * opens each upcoming date's own sales through its readiness checks; turned off, they stop.
+     * The answer's `singleTicketDates` says which dates opened or stopped.
      *
-     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public'} $params
+     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public',singleTickets?:bool} $params
      * @return array<string, mixed>
      */
     public function updateSeason(string $seasonKey, array $params, ?string $idempotencyKey = null): array
