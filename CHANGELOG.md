@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Cancelling a date voids its tickets as a `date_cancel_void` job, named by
+  `Seasons::dateCancelVoidJobId($amendmentId)` (`sbj_void_…`) and followed with
+  `retrieveSeasonBulkJob`; `season.ticket.voided` says `date_cancelled` for each season ticket
+  it voids.
+- A Season package holds 2 to 50 dates. `Seasons::holderImportRowsPerCall($dates)` gives the
+  most rows one `createSeasonHolderImport` call takes (100 up to 20 dates, 43 at 50); a call
+  with more answers `422 invalid_rows` with `maxRows` in the exception's `body`.
+- `updateSeason`'s `singleTicketDates` can carry `jobRefused`, why a `season_singles` job could
+  not start; the change stands, and sending `singleTickets` true again opens any date still not
+  open. An `updateSeason` retried with its first key and `expectedRevision` is not applied twice.
+- A series create given up for its key answers `409 create_abandoned` (a `ConflictException`)
+  with a message to send it again with a new idempotency key.
+
 - Added the 39 remaining Season organizer operations to `$seatlayer->seasons`, which now
   has 87: performances and packages (`createSeasonPerformances`, `attachSeasonPerformances`,
   `updateSeasonPlan`, `deleteSeasonPlan`, `publishSeason`, and more), package prices,

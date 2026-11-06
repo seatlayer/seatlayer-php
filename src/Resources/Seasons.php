@@ -13,6 +13,27 @@ final class Seasons
     {
     }
 
+    /**
+     * The job voiding a cancelled date's tickets: `sbj_void_` and the cancel's `amendmentId`.
+     * Cancelling a date starts it (a repeated cancel joins it); follow it with
+     * `retrieveSeasonBulkJob()`. Each season ticket it voids is told by `season.ticket.voided`
+     * with reason `date_cancelled`.
+     */
+    public static function dateCancelVoidJobId(string $amendmentId): string
+    {
+        return 'sbj_void_' . $amendmentId;
+    }
+
+    /**
+     * The most rows one `createSeasonHolderImport()` call takes for a package of `$dates` dates.
+     * Each row is fenced on every date: 100 up to 20 dates, then `floor(2300 / ($dates + 3))`,
+     * 43 at 50. A call with more answers `422 invalid_rows` with `maxRows`.
+     */
+    public static function holderImportRowsPerCall(int $dates): int
+    {
+        return max(1, min(100, intdiv(2300, max(1, $dates) + 3)));
+    }
+
     private static function path(string $seasonKey, string $suffix = ''): string
     {
         return '/v1/seasons/' . HttpClient::encode($seasonKey) . $suffix;
@@ -92,7 +113,10 @@ final class Seasons
      * `audience` `public` lists the Season on your SeatLayer website; an ended Season cannot
      * become public (`409 sales_ended`). `singleTickets` turned on while the Season is on sale
      * opens each upcoming date's own sales through its readiness checks; turned off, they stop.
-     * The answer's `singleTicketDates` says which dates opened or stopped.
+     * The answer's `singleTicketDates` says which dates opened or stopped. Its `jobRefused`, in
+     * the rare case it is there, says why the `season_singles` job could not start: the change
+     * still stands, and sending `singleTickets` true again opens any date still not open. A
+     * retry with the same `expectedRevision` and Idempotency-Key is not applied twice.
      *
      * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public',singleTickets?:bool} $params
      * @return array<string, mixed>
@@ -320,7 +344,9 @@ final class Seasons
     /**
      * Import incumbent holders. Each row takes `rowId`, `holderRef`, `priorPlanActivationId`,
      * `priorContractRef` and `labels`, plus optional `existingBookingRef`, `holderEmail` and
-     * `holderName`.
+     * `holderName`. A call takes at most `Seasons::holderImportRowsPerCall($dates)` rows (100 up
+     * to 20 dates, 43 at 50); more answers `422 invalid_rows` with `maxRows` on the exception's
+     * `body`.
      *
      * @param array{successorPlanActivationId:string,dryRun?:bool,rows:list<array<string,mixed>>} $params
      * @return array<string, mixed>
@@ -467,7 +493,10 @@ final class Seasons
      * Amend one date of a published Season. `postpone` keeps the date with no new time yet;
      * `cancel` takes it off sale for good and, with `refund` `per_date`, refunds each SeatLayer
      * order's share of the date as a job (the answer's `refundJob`). A whole-order refund is the
-     * order refund.
+     * order refund. A `cancel` also voids every live ticket for the date as a `date_cancel_void`
+     * job, which the answer does not name: it is
+     * `Seasons::dateCancelVoidJobId($answer['amendment']['amendmentId'])`, followed with
+     * `retrieveSeasonBulkJob()`.
      *
      * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date',reason?:string} $params
      * @return array<string, mixed>

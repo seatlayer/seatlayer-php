@@ -6,7 +6,9 @@ namespace SeatLayer\Tests;
 
 use PHPUnit\Framework\TestCase;
 use SeatLayer\RateLimitException;
+use SeatLayer\Resources\Seasons;
 use SeatLayer\SeatLayer;
+use SeatLayer\ValidationException;
 
 final class SeasonTest extends TestCase
 {
@@ -486,6 +488,31 @@ final class SeasonTest extends TestCase
         // A refund without a caller key still gets one, so a retry replays the same job.
         self::assertArrayHasKey('Idempotency-Key', $this->calls[5]['headers']);
         self::assertSame('https://api.seatlayer.io/v1/seasons/sea_1/performances/ev_1/refunds', $this->calls[5]['url']);
+    }
+
+    public function testNamesTheDateCancelVoidJobAndSizesAHolderImportCallByItsDates(): void
+    {
+        self::assertSame('sbj_void_amd_1', Seasons::dateCancelVoidJobId('amd_1'));
+        self::assertSame([100, 100, 95, 43], array_map(
+            static fn (int $dates): int => Seasons::holderImportRowsPerCall($dates),
+            [1, 20, 21, 50],
+        ));
+
+        $seasons = $this->client(422, json_encode([
+            'error' => 'invalid_rows',
+            'code' => 'invalid_rows',
+            'message' => 'At most 43 rows a call for this package.',
+            'maxRows' => 43,
+        ], JSON_THROW_ON_ERROR))->seasons;
+        try {
+            $seasons->createSeasonHolderImport('sea_1', ['successorPlanActivationId' => 'spa_1', 'rows' => []]);
+            self::fail('expected ValidationException');
+        } catch (ValidationException $error) {
+            self::assertSame(422, $error->status);
+            self::assertSame('invalid_rows', $error->errorCode);
+            self::assertSame(43, $error->body['maxRows']);
+            self::assertCount(1, $this->calls);
+        }
     }
 
     public function testNewSeasonOperationsSendExactBodies(): void

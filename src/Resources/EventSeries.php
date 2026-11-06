@@ -26,7 +26,9 @@ final class EventSeries
      * Give `name` and `chartKey`, or `fromEventKey`: an event you already set up becomes
      * the first date under its own key, and every other date is a copy of it (floor plan,
      * prices, checkout, poster and its own seat blocks, none of its orders, holds or sales).
-     * The series takes the event's name, zone and floor plan.
+     * The series takes the event's name, zone and floor plan. A series from an event that never
+     * started and was given up answers `409 create_abandoned` for that Idempotency-Key every
+     * time: send the request again with a new key.
      *
      * @param array{name:string,chartKey:string,schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>},timezone?:string,venue?:string,durationMinutes?:int,dryRun?:bool}|array{fromEventKey:string,schedule:array{rule:'none'|'daily'|'weekly'|'biweekly'|'dates',times:list<string>,from?:string,until?:string,count?:int,skip?:list<string>,dates?:list<string>},name?:string,timezone?:string,dryRun?:bool} $params
      * @return array<string, mixed>

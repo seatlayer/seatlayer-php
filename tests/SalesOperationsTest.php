@@ -301,6 +301,29 @@ final class SalesOperationsTest extends TestCase
         self::assertSame('series-update-1', $this->calls[4]['headers']['Idempotency-Key']);
     }
 
+    public function testAGivenUpSeriesCreateAnswers409CreateAbandonedOnce(): void
+    {
+        $series = $this->client(409, json_encode([
+            'error' => 'create_abandoned',
+            'code' => 'create_abandoned',
+            'message' => 'This series never started and was given up when another request came for the event. '
+                . 'Send the request again with a new Idempotency-Key.',
+        ], JSON_THROW_ON_ERROR))->eventSeries;
+        $schedule = ['rule' => 'daily', 'times' => ['20:00'], 'from' => '2026-11-06', 'until' => '2026-11-08'];
+
+        try {
+            $series->createEventSeries(['fromEventKey' => 'ev_1', 'schedule' => $schedule], 'series-3');
+            self::fail('expected ConflictException');
+        } catch (ConflictException $error) {
+            self::assertSame(409, $error->status);
+            self::assertSame('create_abandoned', $error->errorCode);
+            self::assertStringContainsString('new Idempotency-Key', $error->getMessage());
+            // A header-replay create may take 3 attempts here, but a 409 is the answer: sent once.
+            self::assertCount(1, $this->calls);
+            self::assertSame('series-3', $this->calls[0]['headers']['Idempotency-Key']);
+        }
+    }
+
     public function testHolderReturnRetriesWithOneKey(): void
     {
         $sdk = $this->client(429, '{"error":"rate_limited"}', ['retry-after' => '0']);
