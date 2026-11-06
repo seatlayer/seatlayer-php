@@ -360,6 +360,19 @@ final class SeasonTest extends TestCase
         }
     }
 
+    public function testRenewalNoticesForOneOfferBatchSendItsBatchId(): void
+    {
+        $answer = ['scheduled' => 240, 'withoutEmail' => 3];
+        $seasons = $this->client(200, json_encode($answer, JSON_THROW_ON_ERROR))->seasons;
+
+        self::assertSame($answer, $seasons->createSeasonRenewalNotices('sea/a', batchId: 'srb_1'));
+        self::assertCount(1, $this->calls);
+        self::assertSame('POST', $this->calls[0]['method']);
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea%2Fa/renewal-notices', $this->calls[0]['url']);
+        self::assertSame('{"batchId":"srb_1"}', $this->calls[0]['body']);
+        self::assertArrayNotHasKey('Idempotency-Key', $this->calls[0]['headers']);
+    }
+
     public function testRenewalDeclineReasonReachesTheWireAndTheCheckoutRetriesWithOneKey(): void
     {
         $seasons = $this->client()->seasons;

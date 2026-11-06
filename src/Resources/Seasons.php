@@ -1014,15 +1014,18 @@ final class Seasons
      * more answers `422 too_many_offer_ids`.
      *
      * @param list<string>|null $offerIds Only these offers; null means every open offer.
+     * @param string|null $batchId Instead of offer ids: every open offer one createSeasonRenewalOffers batch made.
      * @return array<string, mixed>
      */
-    public function createSeasonRenewalNotices(string $seasonKey, ?array $offerIds = null): array
-    {
-        return $this->post(
-            $seasonKey,
-            '/renewal-notices',
-            $offerIds === null ? [] : ['offerIds' => $offerIds],
-        );
+    public function createSeasonRenewalNotices(
+        string $seasonKey,
+        ?array $offerIds = null,
+        ?string $batchId = null,
+    ): array {
+        return $this->post($seasonKey, '/renewal-notices', array_filter([
+            'offerIds' => $offerIds,
+            'batchId' => $batchId,
+        ], static fn (mixed $value): bool => $value !== null));
     }
 
     /**
