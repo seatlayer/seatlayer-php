@@ -86,7 +86,10 @@ final class EventSeries
     /**
      * Change the name, prices or sales of every upcoming date.
      *
-     * @param array{name?:string,prices?:array{categories:list<array{key:string,price?:int|float|null,tiers?:list<array{id:string,price:int|float}>}>},sales?:'on'|'off'} $params
+     * `prices.categories` takes only the categories whose price changes (for a tiered category,
+     * only the tiers sent). Every price left out keeps each date's own value.
+     *
+     * @param array{name?:string,prices?:array{categories:non-empty-list<array{key:string,price?:int|float|null,tiers?:list<array{id:string,price:int|float}>}>},sales?:'on'|'off'} $params
      * @return array<string, mixed>
      */
     public function updateEventSeries(string $eventKey, array $params, ?string $idempotencyKey = null): array

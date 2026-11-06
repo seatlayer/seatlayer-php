@@ -129,6 +129,9 @@ final class Holders
     /**
      * Send some of a holder's season tickets to an email.
      *
+     * Turning customer sends off in Settings › Ticket site doesn't stop your server; cut-offs
+     * still apply.
+     *
      * @param list<string> $ticketIds
      * @return array<string, mixed>
      */
@@ -187,7 +190,8 @@ final class Holders
      * Give back a holder's seat on one date, one per ticket.
      *
      * Takes 1 to 20 tickets, all of one season. A repeat with the same key answers with the
-     * same return.
+     * same return. Turning give-backs off in Settings › Ticket site doesn't stop your server;
+     * cut-offs still apply.
      *
      * @param list<string> $ticketIds
      * @return array<string, mixed>

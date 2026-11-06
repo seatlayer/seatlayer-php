@@ -109,7 +109,8 @@ final class Seasons
      *
      * `checkoutMode` is who takes the money; it cannot go back to undecided and is fixed once a
      * live booking exists. The cutoffs are hours before a date starts (0 to 720) after which its
-     * tickets can no longer be sent to others, or a seat given back; `null` means until it starts.
+     * tickets can no longer be sent to others, or a seat given back; `null` means the club
+     * default (Settings › Ticket site), or until it starts when the club has none.
      * `audience` `public` lists the Season on your SeatLayer website; an ended Season cannot
      * become public (`409 sales_ended`). `singleTickets` turned on while the Season is on sale
      * opens each upcoming date's own sales through its readiness checks; turned off, they stop.
