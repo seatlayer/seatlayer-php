@@ -34,6 +34,20 @@ final class Seasons
         return max(1, min(100, intdiv(2300, max(1, $dates) + 3)));
     }
 
+    /**
+     * True for the `202` a season-seats season's date cancel (`createSeasonAmendment()`) or past
+     * date (`markSeasonPerformancePast()`) answers while the date is still leaving every season
+     * seat: `state` `finishing`, `code` `block_date_leave_pending`, with `eventKey`, `shardsLeft`
+     * and `shardCount`. It finishes by itself: send the same request again after `Retry-After` to
+     * read how it ended.
+     *
+     * @param array<string, mixed> $answer
+     */
+    public static function isDateLeavePending(array $answer): bool
+    {
+        return ($answer['state'] ?? null) === 'finishing' && ($answer['code'] ?? null) === 'block_date_leave_pending';
+    }
+
     private static function path(string $seasonKey, string $suffix = ''): string
     {
         return '/v1/seasons/' . HttpClient::encode($seasonKey) . $suffix;
@@ -87,9 +101,13 @@ final class Seasons
 
     /**
      * Create a draft Season. `singleTickets` true makes each date also sell its own single
-     * tickets once the Season is on sale; the default is Season only.
+     * tickets once the Season is on sale; the default is Season only. `inventoryMode` `block`
+     * turns season seats on for this Season; the default is `per_hold`, and anything else answers
+     * `422 invalid_inventory_mode`. Every Season answer carries `inventoryMode`: how the season's
+     * seats are decided, `block` once season seats are turned on for it (`inventoryMode: "block"`
+     * on create or update) or it sells from its block, else `per_hold`.
      *
-     * @param array{name:string,edition?:?string,eventKeys?:list<string>,sourcePerformanceGroupKeys?:list<string>,singleTickets?:bool} $params
+     * @param array{name:string,edition?:?string,eventKeys?:list<string>,sourcePerformanceGroupKeys?:list<string>,singleTickets?:bool,inventoryMode?:'block'|'per_hold'} $params
      * @return array<string, mixed>
      */
     public function createSeason(array $params, ?string $idempotencyKey = null): array
@@ -118,8 +136,13 @@ final class Seasons
      * the rare case it is there, says why the `season_singles` job could not start: the change
      * still stands, and sending `singleTickets` true again opens any date still not open. A
      * retry with the same `expectedRevision` and Idempotency-Key is not applied twice.
+     * `inventoryMode` `block` turns season seats on for this Season; `per_hold` turns them off
+     * again, refused with `409 season_block_exists` once seats are set aside. It does not change
+     * the Season's `revision`. Refused with `409 season_block_packages` (more than one package),
+     * `409 season_block_on_sale` (sales already opened without season seats),
+     * `409 season_not_draft_or_active`, or `422 invalid_inventory_mode`.
      *
-     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public',singleTickets?:bool} $params
+     * @param array{expectedRevision:int,name?:string,edition?:?string,checkoutMode?:'seatlayer'|'server',transferCutoffHours?:?int,returnCutoffHours?:?int,audience?:'embed_only'|'public',singleTickets?:bool,inventoryMode?:'block'|'per_hold'} $params
      * @return array<string, mixed>
      */
     public function updateSeason(string $seasonKey, array $params, ?string $idempotencyKey = null): array
@@ -215,7 +238,8 @@ final class Seasons
      * Open sales. The answer's `warnings` say what is advised but not required, such as
      * `checkout_test_missing` until a checkout test or rehearsal has passed. Refused with
      * `409 plan_not_published` or `409 checkout_mode_not_chosen` until a package is published and
-     * a checkout mode is chosen.
+     * a checkout mode is chosen, and with `409 block_not_ready` when season seats are turned on
+     * (`inventoryMode` `block`) but the seats are not set aside yet.
      *
      * @return array<string, mixed>
      */
@@ -498,7 +522,9 @@ final class Seasons
      * job, which the answer does not name: it is
      * `Seasons::dateCancelVoidJobId($answer['amendment']['amendmentId'])`, followed with
      * `retrieveSeasonBulkJob()`. A cancelled date can't be moved (`reschedule`), postponed or
-     * replaced: `409 performance_cancelled`.
+     * replaced: `409 performance_cancelled`. On a season-seats season, a `cancel` first takes the
+     * date off every season seat: while that finishes the answer is a `202` (check with
+     * `Seasons::isDateLeavePending()`); send the same request again to read the amendment.
      *
      * @param array{eventKey:string,kind:'reschedule'|'replace'|'cancel_exception'|'postpone'|'cancel',startsAt?:int,name?:string,planActivationId?:string,refund?:'none'|'per_date',reason?:string} $params
      * @return array<string, mixed>
@@ -825,7 +851,8 @@ final class Seasons
 
     /**
      * Mark a performance past so it stops blocking new Season sales. A cancelled date answers
-     * `409 performance_cancelled`.
+     * `409 performance_cancelled`. On a season-seats season the date first leaves every season
+     * seat: while that finishes the answer is a `202` (check with `Seasons::isDateLeavePending()`).
      *
      * @return array<string, mixed>
      */
@@ -1239,5 +1266,51 @@ final class Seasons
     public function retrieveSeasonBulkJob(string $seasonKey, string $jobId): array
     {
         return $this->get($seasonKey, '/jobs/' . HttpClient::encode($jobId));
+    }
+
+    /**
+     * Set the season's seats aside on every date: every seat its packages price, minus
+     * `keepForSingleTickets` (sections, categories or seats). Answers `202` with `job` (a
+     * `season_block_set_aside` job to follow with `retrieveSeasonBulkJob()`) and `block`. On an
+     * active season block mode turns on by itself once every date has the seats
+     * (`season.block.ready`); on a draft, Publish turns it on. Season seats must be on for the
+     * season (`409 season_block_not_enabled` otherwise). Retried safely with one
+     * Idempotency-Key, which replays the same answer.
+     *
+     * @param array{expectedRevision:int,keepForSingleTickets?:array{sectionIds?:list<string>,categoryKeys?:list<string>,labels?:list<string>}} $params
+     * @return array<string, mixed>
+     */
+    public function setAsideSeasonBlock(string $seasonKey, array $params, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(self::path($seasonKey, '/block'), $params, $idempotencyKey);
+    }
+
+    /**
+     * The season's seats set aside on every date: `block` with its `mode` (`block` once on, else
+     * `per_hold`), `state`, `counts` and each date's `state`.
+     *
+     * @return array<string, mixed>
+     */
+    public function retrieveSeasonBlock(string $seasonKey): array
+    {
+        return $this->get($seasonKey, '/block');
+    }
+
+    /**
+     * Release season seats to single sale: every unsold seat (`scope` `['all' => true]`), or the
+     * sections, categories or seats named. `eventKeys` limits it to those dates (left out: every
+     * date still to come); `at` (an ISO time) releases then instead of now. Answers `202` with
+     * `job` (a `season_block_release` job to follow with `retrieveSeasonBulkJob()`) and `block`.
+     * `season.block.released` is sent once it has run on every date. Retried safely with one
+     * Idempotency-Key, which replays the same release.
+     *
+     * @param array{expectedRevision:int,scope:array{all:true}|array{sectionIds:list<string>}|array{categoryKeys:list<string>}|array{labels:list<string>},eventKeys?:list<string>,at?:string,reason?:string} $params
+     * @return array<string, mixed>
+     */
+    public function releaseSeasonBlock(string $seasonKey, array $params, ?string $idempotencyKey = null): array
+    {
+        /** @var array<string, mixed> */
+        return (array) $this->http->postWithHeaderReplay(self::path($seasonKey, '/block/release'), $params, $idempotencyKey);
     }
 }

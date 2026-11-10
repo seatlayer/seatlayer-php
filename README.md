@@ -138,6 +138,50 @@ if ($quote['problem'] === null) {
 $seatlayer->holders->declineHolderRenewalOffer('holder_123', $offerId, 'Moving away');
 ```
 
+### Season seats
+
+Season seats are the seats a season sets aside on every date before its sales open. A season
+buyer's hold then doesn't have to ask each date, and single-ticket buyers see those seats as
+unavailable. They are off for every season until you send `'inventoryMode' => 'block'` to
+`createSeason()` or `updateSeason()`. The season needs one package, and its sales must not have
+opened.
+
+```php
+$seatlayer->seasons->updateSeason($seasonKey, ['expectedRevision' => $revision, 'inventoryMode' => 'block']);
+
+$job = $seatlayer->seasons->setAsideSeasonBlock($seasonKey, [
+    'expectedRevision' => $revision,
+    'keepForSingleTickets' => ['sectionIds' => ['sec_family']],
+])['job'];
+while (in_array($job['state'], ['planning', 'running'], true)) {
+    sleep(2);
+    $job = $seatlayer->seasons->retrieveSeasonBulkJob($seasonKey, $job['jobId'])['job'];
+}
+$block = $seatlayer->seasons->retrieveSeasonBlock($seasonKey)['block'];
+
+// Release unsold season seats to single sale. Leave out 'at' to release now.
+$seatlayer->seasons->releaseSeasonBlock($seasonKey, [
+    'expectedRevision' => $block['revision'],
+    'scope' => ['all' => true],
+    'at' => '2026-12-01T09:00:00Z',
+]);
+```
+
+- On an active season, block mode turns on by itself once every date has the seats, and
+  `season.block.ready` is sent once. On a draft, `publishSeason()` turns it on.
+  `season.block.released` is sent once a release has run.
+- In block mode, a date cancel (`createSeasonAmendment()`, kind `cancel`) or
+  `markSeasonPerformancePast()` first takes the date off every season seat. Until that finishes the
+  answer is a `202`: check it with `SeatLayer\Resources\Seasons::isDateLeavePending($answer)`, then
+  send the same request again after `Retry-After`.
+- Refusals come through `SeatLayerException` with `errorCode`, and nothing changes. For example
+  `409 season_block_packages` (more than one package), `409 season_block_on_sale` (sales have
+  opened), or `409 block_not_ready` from `openSeasonSales()` before block mode is on.
+- A partner's seat on a date (one a sales channel sells there) stays out of the block. It is
+  listed in `$block['notFreeOnEveryDate']` with reason `channel`.
+
+The [Season seats docs](https://docs.seatlayer.io/server-api/seasons/#season-seats) list every refusal.
+
 ## Orders, holders, event sales, and event series
 
 - `$seatlayer->orders` lists orders across events and seasons, reads one order and its
