@@ -78,8 +78,14 @@ The hint is best effort, not a data-residency guarantee. See the
 
 ## Fixed Renewable Seasons
 
-Version `0.7.0` exposes all 48 trusted organizer operations through
-`$seatlayer->seasons`.
+`$seatlayer->seasons` exposes 87 trusted organizer operations: the 48 released in `0.7.0`,
+plus performances and packages, package prices (each may name a `priceTypeKey`: `adult`,
+`child`, `concession`, `senior` or `student`), checkout tests, occurrence returns and
+reclaims, holders, season orders, hosted renewals, renewal quotes, intents and checkouts,
+sales and seat reports, CSV exports, and
+the bulk refund of a cancelled date (`refundSeasonPerformance`) and the release of every
+lapsed renewal offer's seats (`releaseSeasonLapsedOffers`) with their jobs
+(`listSeasonBulkJobs`, `retrieveSeasonBulkJob`).
 
 After the test hold/book/cancel journey and matching webhook deliveries,
 `validateSeasonBuyerRehearsal($seasonKey)` sends no evidence body; SeatLayer
@@ -102,6 +108,59 @@ Treat `202` as accepted work and poll `retrieveSeasonLifecycle()` with the
 returned operation identity. Buyer-session minting and domain-exact booking,
 cancellation, and renewal actions remain single-attempt; only declared
 header-replay catalogue mutations retry automatically.
+
+Above 100 contracts, `createSeasonRenewalOffers()` answers `202` with a `renewal_run` `job`
+and its `batchId` instead of `offers`; above 100 holders, `createSeasonHolderImportFromSeason()`
+answers `202` with a `holder_import` `job`. Follow either with `retrieveSeasonBulkJob()`.
+`listSeasonRenewalOffers()` and `retrieveSeasonHostedRenewals()` read one page at a time: pass
+the answer's `nextCursor` back as `$cursor` until it is null.
+
+`exportSeasonHoldersCsv()` and `exportSeasonOrdersCsv()` return the CSV text as a string,
+not decoded JSON. `deleteSeasonPlan()` returns nothing (the API answers `204`).
+
+When SeatLayer takes the season's payments, renew a holder with no hosted page: read the price,
+start a checkout, and send the holder to `payment.url`. For a renewal taken by phone or at the
+box office, `createSeasonRenewalIntent()` records the holder's intent before you commit the
+offer. A decline can carry the holder's reason.
+
+```php
+$quote = $seatlayer->seasons->retrieveSeasonRenewalQuote($seasonKey, $offerId);
+if ($quote['problem'] === null) {
+    $started = $seatlayer->seasons->createSeasonRenewalCheckout(
+        $seasonKey,
+        $offerId,
+        ['returnUrl' => 'https://tickets.yourclub.example/renewed'],
+        "renew-{$offerId}",
+    );
+    header('Location: ' . $started['payment']['url']);
+}
+
+$seatlayer->holders->declineHolderRenewalOffer('holder_123', $offerId, 'Moving away');
+```
+
+## Orders, holders, event sales, and event series
+
+- `$seatlayer->orders` lists orders across events and seasons, reads one order and its
+  tickets, and lists, refunds, cancels, or resends one event's orders.
+  `exportEventOrdersCsv()` returns the CSV text.
+- `$seatlayer->holders` reads and updates season ticket holders, finds customers with
+  `listCustomers()`, signs a holder out, lists their seasons and tickets, and sends,
+  cancels, or accepts ticket transfers.
+- `$seatlayer->events` also holds each event's sales settings: buyer checkout, payment
+  gateway, sales readiness, preflight and transitions, booking fee, and discount codes.
+- `$seatlayer->eventSeries` plans a series of dated events from a schedule, adds dates,
+  and changes every upcoming date at once.
+
+```php
+$paid = $seatlayer->orders->listEventOrders($eventKey, status: 'paid');
+$seatlayer->orders->refundEventOrder(
+    $eventKey,
+    $orderId,
+    amountMinor: 500,
+    idempotencyKey: "refund-{$refundId}",
+);
+$csv = $seatlayer->orders->exportEventOrdersCsv($eventKey); // CSV text
+```
 
 ## Test vs live
 
@@ -205,6 +264,8 @@ exactly when you don't want that, and you can control it explicitly:
 ```php
 $seatlayer->events->list(limit: 50, counts: false);
 ```
+
+Pass `seriesKey: 'ser_1'` to list only the dates of one event series.
 
 ## Keeping a hold alive
 
@@ -320,14 +381,25 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Fourteen mutations
-use exact header replay: `charts->create`, `charts->copy`,
-`templates->instantiateTemplate`, `events->create`, `workspaces->create`,
-`performanceGroups->create`, `seasons->createSeason`, `seasons->updateSeason`,
-`seasons->deleteSeason`, `seasons->createSeasonPlan`, `seasons->duplicateSeasonToLive`,
-`seasons->createSeasonHolderImport`, `seasons->createSeasonRenewalOffers`, and
-`seasons->createSeasonAmendment`. They generate an `Idempotency-Key` when absent and reuse that key
-across every attempt. You can supply a stable provisioning key instead:
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Forty-one
+mutations use exact header replay:
+
+- `charts->create`, `charts->copy`, `templates->instantiateTemplate`, `events->create`,
+  `workspaces->create`, and `performanceGroups->create`;
+- on `seasons`: `createSeason`, `updateSeason`, `deleteSeason`, `publishSeason`,
+  `createSeasonPlan`, `updateSeasonPlan`, `deleteSeasonPlan`, `duplicateSeasonToLive`,
+  `createSeasonPerformances`, `attachSeasonPerformances`, `deleteSeasonPerformance`,
+  `markSeasonPerformancePast`, `attachSeasonPlanPerformance`, `deleteSeasonPlanPerformance`,
+  `replaceSeasonPackagePrices`, `createSeasonCheckoutTest`, `createSeasonHolderImport`,
+  `createSeasonHolderImportFromSeason`, `createSeasonRenewalOffers`, `createSeasonAmendment`,
+  `refundSeasonOrder`, `cancelSeasonOrder`, `cancelSeasonOrderDate`,
+  `refundSeasonPerformance`, `releaseSeasonLapsedOffers`, and `createSeasonRenewalCheckout`;
+- `holders->updateHolder`, `holders->createHolderTransfer`, `holders->createHolderReturn`,
+  `holders->createHolderRenewalCheckout`, `orders->refundEventOrder`, `orders->cancelEventOrder`, `eventSeries->createEventSeries`,
+  `eventSeries->addEventSeriesDates`, and `eventSeries->updateEventSeries`.
+
+They generate an `Idempotency-Key` when absent and reuse that key across every attempt. You can
+supply a stable provisioning key instead:
 
 ```php
 $seatlayer->events->create(
@@ -338,7 +410,8 @@ $seatlayer->events->create(
 ```
 
 All remaining SDK mutations are single-attempt: holds, bookings, lifecycle changes, channel
-changes, show-once secret creation, and raw requests. Some have a server-side domain idempotency
+changes, event sales settings and discount codes, ticket and renewal emails, show-once secret
+creation, and raw requests. Some have a server-side domain idempotency
 contract, but the SDK does not retry them automatically. Reconcile bookings with their required
 `bookingRef`; never retry an unknown booking outcome as though the transport had made it safe.
 
@@ -365,21 +438,24 @@ suite runs without a network.
 ## API surface
 
 The client exposes these resources. Performance Groups cover runs, sessions, holds, and bookings;
-Seasons cover catalogue, plan, sales, buyer-session, booking, renewal, occurrence, reporting,
-outbox, and support operations.
+Seasons cover catalogue, plan, performance, price, sales, buyer-session, booking, renewal,
+occurrence, holder, order, reporting, outbox, and support operations.
 
 | Resource | Methods |
 | --- | --- |
 | `charts` | `list` `listAll` `create` `retrieve` `update` `delete` `copy` `archive` `unarchive` `publish` |
 | `templates` | `instantiateTemplate` |
-| `events` | `list` `listAll` `create` `retrieve` `retrieveConfigurationBinding` `updateConfigurationBinding` `update` `delete` `updateChart` `close` `reopen` `archive` `retrieveHoldTtl` `updateHoldTtl` `listTicketReleases` `updateTicketReleases` `closeTicketRelease` `retrieveReport` `retrieveLog` |
+| `events` | `list` `listAll` `create` `retrieve` `retrieveConfigurationBinding` `updateConfigurationBinding` `update` `delete` `updateChart` `close` `reopen` `archive` `retrieveHoldTtl` `updateHoldTtl` `listTicketReleases` `updateTicketReleases` `closeTicketRelease` `retrieveReport` `retrieveLog` `retrieveEventBuyerCheckout` `replaceEventBuyerCheckout` `retrieveEventPaymentGateway` `replaceEventPaymentGateway` `retrieveEventSalesReadiness` `preflightEventSales` `transitionEventSales` `retrieveEventBookingFee` `replaceEventBookingFee` `listEventDiscountCodes` `createEventDiscountCode` `updateEventDiscountCode` `endEventDiscountCode` `deleteEventDiscountCode` |
+| `eventSeries` | `createEventSeries` `listEventSeries` `retrieveEventSeries` `addEventSeriesDates` `updateEventSeries` |
+| `orders` | `listOrders` `retrieveOrder` `listOrderTickets` `listEventOrders` `retrieveEventOrder` `exportEventOrdersCsv` `refundEventOrder` `cancelEventOrder` `resendEventOrderTickets` |
+| `holders` | `listCustomers` `retrieveHolder` `updateHolder` `revokeHolderSessions` `listHolderSeasons` `listHolderTickets` `retrieveHolderTicket` `createHolderTransfer` `listHolderTransfers` `cancelHolderTransfer` `acceptHolderTransfer` `createHolderReturn` `createHolderRenewalCheckout` `declineHolderRenewalOffer` |
 | `channels` | `listChannels` `createChannel` `updateChannel` `updateAssignments` `listAllocation` `retrieveAccessPreview` `retrieveReport` `pause` `unpause` `archive` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` |
 | `inventory` | `hold` `holdBestAvailable` `bookBestAvailable` `extendHold` `retrieveHold` `release` `book` `boxOfficeBook` `unbook` `block` `unblock` `unblockAll` `retrieveAvailability` `updateAvailability` `listBookings` `retrieveBooking` |
 | `sessions` | `createManageSession` `revokeManageSession` `createDesignerSession` `revokeDesignerSession` |
 | `webhooks` | `list` `create` `update` `delete` `listDeliveries` |
 | `workspaces` | `list` `create` `retrieve` `update` |
 | `performanceGroups` | `list` `create` `retrieve` `delete` `activate` `close` `retrieveLifecycle` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` `retrieveHold` `bookHold` `retrieveBooking` |
-| `seasons` | 48 operations for catalogue and Plan lifecycle, sales windows, buyer access and booking, holder imports, renewals, occurrence amendments, reports, audit, outbox, and support export |
+| `seasons` | 87 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
 
 Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
 
