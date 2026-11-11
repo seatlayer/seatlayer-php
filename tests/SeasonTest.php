@@ -5,9 +5,11 @@ declare(strict_types=1);
 namespace SeatLayer\Tests;
 
 use PHPUnit\Framework\TestCase;
+use SeatLayer\ConflictException;
 use SeatLayer\RateLimitException;
 use SeatLayer\Resources\Seasons;
 use SeatLayer\SeatLayer;
+use SeatLayer\SeatLayerException;
 use SeatLayer\ValidationException;
 
 final class SeasonTest extends TestCase
@@ -38,7 +40,7 @@ final class SeasonTest extends TestCase
         return new SeatLayer('sk_test_abc', 'https://api.seatlayer.io', 3, 30.0, $transport);
     }
 
-    public function testMapsAll87SeasonOperationsAndReplayClasses(): void
+    public function testMapsAll90SeasonOperationsAndReplayClasses(): void
     {
         /** @var list<array{method:string,url:string,headers:array<string,string>,body:?string}> $calls */
         $calls = [];
@@ -184,8 +186,15 @@ final class SeasonTest extends TestCase
             'provider' => 'stripe',
         ], 'renew-1');
         $seasons->releaseSeasonLapsedOffers($key, 'release-lapsed-1');
+        // Season seats: set aside, read, release (phase 4).
+        $seasons->setAsideSeasonBlock($key, ['expectedRevision' => 7, 'keepForSingleTickets' => ['labels' => ['A-6']]], 'block-1');
+        $seasons->retrieveSeasonBlock($key);
+        $seasons->releaseSeasonBlock($key, [
+            'expectedRevision' => 7, 'scope' => ['all' => true], 'eventKeys' => ['ev/1'],
+            'at' => '2026-12-01T10:00:00Z', 'reason' => 'Unsold',
+        ]);
 
-        self::assertCount(87, $calls);
+        self::assertCount(90, $calls);
         $actual = array_map(static fn (array $call): array => [
             $call['method'],
             substr($call['url'], strlen('https://api.seatlayer.io')),
@@ -259,10 +268,12 @@ final class SeasonTest extends TestCase
             ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/intent'],
             ['POST', '/v1/seasons/sea%2Fa/renewal-offers/offer%2F1/checkout'],
             ['POST', '/v1/seasons/sea%2Fa/renewal-offers/release-lapsed'],
+            ['POST', '/v1/seasons/sea%2Fa/block'], ['GET', '/v1/seasons/sea%2Fa/block'],
+            ['POST', '/v1/seasons/sea%2Fa/block/release'],
         ], $actual);
         self::assertNull($calls[26]['body']);
 
-        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80, 85, 86];
+        $replayIndexes = [2, 4, 5, 10, 18, 27, 29, 38, 48, 50, 51, 52, 53, 54, 55, 56, 58, 60, 61, 62, 66, 67, 68, 80, 85, 86, 87, 89];
         foreach ($calls as $index => $call) {
             if (in_array($index, $replayIndexes, true)) {
                 self::assertArrayHasKey('Idempotency-Key', $call['headers']);
@@ -284,6 +295,51 @@ final class SeasonTest extends TestCase
         );
         self::assertSame('release-lapsed-1', $calls[86]['headers']['Idempotency-Key']);
         self::assertNull($calls[86]['body']);
+        self::assertSame('block-1', $calls[87]['headers']['Idempotency-Key']);
+        self::assertSame('{"expectedRevision":7,"keepForSingleTickets":{"labels":["A-6"]}}', $calls[87]['body']);
+        self::assertNull($calls[88]['body']);
+        self::assertSame(
+            '{"expectedRevision":7,"scope":{"all":true},"eventKeys":["ev\\/1"],"at":"2026-12-01T10:00:00Z","reason":"Unsold"}',
+            $calls[89]['body'],
+        );
+    }
+
+    public function testSeasonSeatsAnswersReachTheCaller(): void
+    {
+        $answer = [
+            'job' => self::job('season_block_set_aside'),
+            'block' => ['mode' => 'per_hold', 'state' => 'setting_aside', 'revision' => 7, 'counts' => ['setAside' => 5]],
+        ];
+        $seasons = $this->client(202, json_encode($answer, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame($answer, $seasons->setAsideSeasonBlock('sea_1', ['expectedRevision' => 7]));
+        // Without a caller key one is generated, so a retry replays the same answer.
+        self::assertArrayHasKey('Idempotency-Key', $this->calls[0]['headers']);
+
+        // A job of a kind this SDK did not know before reads as any other.
+        $release = ['job' => self::job('season_block_release')];
+        $seasons = $this->client(200, json_encode($release, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame('season_block_release', $seasons->retrieveSeasonBulkJob('sea_1', 'sbr_1')['job']['kind']);
+
+        $pending = [
+            'state' => 'finishing', 'code' => 'block_date_leave_pending', 'retryable' => true,
+            'eventKey' => 'ev_1', 'shardsLeft' => [1], 'shardCount' => 2, 'message' => 'Still leaving one shard',
+        ];
+        $seasons = $this->client(202, json_encode($pending, JSON_THROW_ON_ERROR), ['retry-after' => '2'])->seasons;
+        self::assertTrue(Seasons::isDateLeavePending($seasons->createSeasonAmendment('sea_1', ['eventKey' => 'ev_1', 'kind' => 'cancel'])));
+        self::assertTrue(Seasons::isDateLeavePending($seasons->markSeasonPerformancePast('sea_1', 'ev_1')));
+        self::assertFalse(Seasons::isDateLeavePending(['amendment' => ['amendmentId' => 'am_1']]));
+        self::assertFalse(Seasons::isDateLeavePending(['state' => 'finishing', 'code' => 'season_busy']));
+        self::assertFalse(Seasons::isDateLeavePending(['state' => 'done', 'code' => 'block_date_leave_pending']));
+
+        foreach (['season_block_not_enabled', 'block_exists', 'season_block_set_aside', 'season_inventory_locked', 'date_leave_in_progress'] as $code) {
+            $seasons = $this->client(409, json_encode(['error' => $code, 'code' => $code, 'message' => $code], JSON_THROW_ON_ERROR))->seasons;
+            try {
+                $seasons->releaseSeasonBlock('sea_1', ['expectedRevision' => 7, 'scope' => ['labels' => ['A-1']]]);
+                self::fail('expected ConflictException');
+            } catch (ConflictException $error) {
+                self::assertSame($code, $error->errorCode);
+            }
+        }
     }
 
     /**
@@ -388,6 +444,66 @@ final class SeasonTest extends TestCase
         self::assertSame('{"name":"Series","eventKeys":["ev_1","ev_2"],"singleTickets":true}', $this->calls[0]['body']);
         self::assertSame('{"expectedRevision":5,"singleTickets":false}', $this->calls[1]['body']);
         self::assertSame('update-1', $this->calls[1]['headers']['Idempotency-Key']);
+    }
+
+    public function testInventoryModeReachesTheWireOnlyWhenGivenAndReadsBack(): void
+    {
+        $season = ['season' => ['key' => 'sea_1', 'revision' => 5, 'inventoryMode' => 'block']];
+        $seasons = $this->client(200, json_encode($season, JSON_THROW_ON_ERROR))->seasons;
+
+        $created = $seasons->createSeason(['name' => 'Series', 'eventKeys' => ['ev_1', 'ev_2'], 'inventoryMode' => 'block'], 'create-1');
+        $seasons->createSeason(['name' => 'Series', 'eventKeys' => ['ev_1', 'ev_2']], 'create-2');
+        $turnedOn = $seasons->updateSeason('sea/a', ['expectedRevision' => 5, 'inventoryMode' => 'block'], 'update-1');
+        $seasons->updateSeason('sea/a', ['expectedRevision' => 5, 'inventoryMode' => 'per_hold'], 'update-2');
+        $seasons->updateSeason('sea/a', ['expectedRevision' => 5, 'name' => 'Series 2'], 'update-3');
+        $retrieved = $seasons->retrieveSeason('sea/a');
+
+        self::assertSame(['POST', 'POST', 'PATCH', 'PATCH', 'PATCH', 'GET'], array_column($this->calls, 'method'));
+        self::assertSame('{"name":"Series","eventKeys":["ev_1","ev_2"],"inventoryMode":"block"}', $this->calls[0]['body']);
+        self::assertSame('{"name":"Series","eventKeys":["ev_1","ev_2"]}', $this->calls[1]['body']);
+        self::assertSame('{"expectedRevision":5,"inventoryMode":"block"}', $this->calls[2]['body']);
+        self::assertSame('{"expectedRevision":5,"inventoryMode":"per_hold"}', $this->calls[3]['body']);
+        self::assertSame('{"expectedRevision":5,"name":"Series 2"}', $this->calls[4]['body']);
+        self::assertSame('https://api.seatlayer.io/v1/seasons/sea%2Fa', $this->calls[5]['url']);
+        self::assertSame($season, $created);
+        self::assertSame('block', $turnedOn['season']['inventoryMode']);
+        self::assertSame('block', $retrieved['season']['inventoryMode']);
+
+        $list = ['seasons' => [
+            ['key' => 'sea_1', 'inventoryMode' => 'block'],
+            ['key' => 'sea_2', 'inventoryMode' => 'per_hold'],
+        ], 'nextCursor' => null];
+        $seasons = $this->client(200, json_encode($list, JSON_THROW_ON_ERROR))->seasons;
+        self::assertSame(['block', 'per_hold'], array_column($seasons->listSeasons()['seasons'], 'inventoryMode'));
+    }
+
+    public function testInventoryModeRefusalsReachTheCallerWithTheirCode(): void
+    {
+        $refusals = [
+            [409, 'season_block_packages'],
+            [409, 'season_block_on_sale'],
+            [409, 'season_not_draft_or_active'],
+            [409, 'season_block_exists'],
+            [422, 'invalid_inventory_mode'],
+        ];
+        foreach ($refusals as [$status, $code]) {
+            $seasons = $this->client($status, json_encode(['error' => $code, 'code' => $code, 'message' => $code], JSON_THROW_ON_ERROR))->seasons;
+            try {
+                $seasons->updateSeason('sea_1', ['expectedRevision' => 5, 'inventoryMode' => 'block']);
+                self::fail('expected SeatLayerException');
+            } catch (SeatLayerException $error) {
+                self::assertSame($status, $error->status);
+                self::assertSame($code, $error->errorCode);
+            }
+        }
+
+        $seasons = $this->client(409, json_encode(['error' => 'block_not_ready', 'code' => 'block_not_ready'], JSON_THROW_ON_ERROR))->seasons;
+        try {
+            $seasons->openSeasonSales('sea_1', 5);
+            self::fail('expected ConflictException');
+        } catch (ConflictException $error) {
+            self::assertSame('block_not_ready', $error->errorCode);
+        }
     }
 
     public function testRenewalNoticesForOneOfferBatchSendItsBatchId(): void
