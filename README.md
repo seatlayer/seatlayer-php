@@ -78,14 +78,15 @@ The hint is best effort, not a data-residency guarantee. See the
 
 ## Fixed Renewable Seasons
 
-`$seatlayer->seasons` exposes 87 trusted organizer operations: the 48 released in `0.7.0`,
-plus performances and packages, package prices (each may name a `priceTypeKey`: `adult`,
-`child`, `concession`, `senior` or `student`), checkout tests, occurrence returns and
-reclaims, holders, season orders, hosted renewals, renewal quotes, intents and checkouts,
-sales and seat reports, CSV exports, and
-the bulk refund of a cancelled date (`refundSeasonPerformance`) and the release of every
-lapsed renewal offer's seats (`releaseSeasonLapsedOffers`) with their jobs
-(`listSeasonBulkJobs`, `retrieveSeasonBulkJob`).
+`$seatlayer->seasons` has all 90 season operations: seasons and their packages, dates and
+package prices (per price type, set with `priceTypeKey`: `adult`, `child`, `concession`,
+`senior` or `student`), sales windows, checkout tests, buyer sessions and booking, holder
+imports and the holder list, season orders, renewals (offers, quotes, intents, checkouts and
+hosted renewal links), date changes and cancellations, season seats, bulk refunds with their
+jobs, sales and seat reports, CSV exports, audit and support export. The bulk refund of a
+cancelled date is `refundSeasonPerformance`, the release of every lapsed renewal offer's seats
+is `releaseSeasonLapsedOffers`, and their jobs are read with `listSeasonBulkJobs` and
+`retrieveSeasonBulkJob`.
 
 After the test hold/book/cancel journey and matching webhook deliveries,
 `validateSeasonBuyerRehearsal($seasonKey)` sends no evidence body; SeatLayer
@@ -499,7 +500,7 @@ occurrence, holder, order, reporting, outbox, and support operations.
 | `webhooks` | `list` `create` `update` `delete` `listDeliveries` |
 | `workspaces` | `list` `create` `retrieve` `update` |
 | `performanceGroups` | `list` `create` `retrieve` `delete` `activate` `close` `retrieveLifecycle` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` `retrieveHold` `bookHold` `retrieveBooking` |
-| `seasons` | 87 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
+| `seasons` | 90 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
 
 Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
 
