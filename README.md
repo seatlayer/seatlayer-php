@@ -21,13 +21,13 @@ through one typed ticketing API client.
 > browser or anything a ticket buyer can reach. Browser surfaces get short-lived, origin-bound
 > tokens that you mint here.
 
-Two-step shape: the buyer picks and holds seats in the client with your public key, then this SDK confirms the booking from your server with your secret key while your platform keeps checkout and its own payment provider.
+**How it works:** the buyer picks and holds seats in your website or app with your public key. Your server then reads the hold, takes the payment through your own provider, and books the seats with this SDK and your secret key.
 
-**Start here:** [Quickstart](https://docs.seatlayer.io/start/quickstart/) · [Holds and checkout](https://docs.seatlayer.io/buyer-sdk/holds-and-checkout/) · [PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/) · [SDK catalog](https://docs.seatlayer.io/sdk-catalog.json) · [Pricing](https://seatlayer.io/pricing/): $0 entry, 100 free confirmed-sold-seat credits per organization each month, then $0.10 down to $0.05 a credit, and credits never expire.
+**Start here:** [Quickstart](https://docs.seatlayer.io/start/quickstart/) · [Holds and checkout](https://docs.seatlayer.io/buyer-sdk/holds-and-checkout/) · [PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/) · [SDK catalog](https://docs.seatlayer.io/sdk-catalog.json) · [Pricing](https://seatlayer.io/pricing/): 100 sold seats free every month, then 10¢ down to 5¢ per sold seat. No subscription, and purchased credits never expire. Test mode is free.
 
 ## Scale evidence
 
-Benchmarked on public 100,000-, 150,000- and 200,000-seat venue fixtures on 15 September 2026: 200,000 seats chart-ready in 1.95 s, desktop, local production build. Fixtures, method and run logs: https://github.com/seatlayer/seatlayer-performance. Live 200,000-seat stadium demo: https://app.seatlayer.io/demo/play/century-stadium-200k. This is renderer evidence, not a concurrent-buyer claim.
+Benchmarked on public 100,000-, 150,000- and 200,000-seat venue fixtures on 15 September 2026: 200,000 seats chart-ready in 1.95 s, desktop, local production build. Tested at 10,000 simulated concurrent buyers on one 12,000-seat event (18 September 2026): engine-side hold latency p99 9 ms, zero server errors. Method, fixtures and run files: https://github.com/seatlayer/seatlayer-performance. Live 200,000-seat stadium demo: https://app.seatlayer.io/demo/play/century-stadium-200k.
 
 ## Install the PHP seat booking SDK
 
@@ -78,20 +78,22 @@ The hint is best effort, not a data-residency guarantee. See the
 
 ## Fixed Renewable Seasons
 
-`$seatlayer->seasons` exposes 87 trusted organizer operations: the 48 released in `0.7.0`,
-plus performances and packages, package prices (each may name a `priceTypeKey`: `adult`,
-`child`, `concession`, `senior` or `student`), checkout tests, occurrence returns and
-reclaims, holders, season orders, hosted renewals, renewal quotes, intents and checkouts,
-sales and seat reports, CSV exports, and
-the bulk refund of a cancelled date (`refundSeasonPerformance`) and the release of every
-lapsed renewal offer's seats (`releaseSeasonLapsedOffers`) with their jobs
-(`listSeasonBulkJobs`, `retrieveSeasonBulkJob`).
+`$seatlayer->seasons` has all 90 season operations: seasons and their packages, dates and
+package prices (per price type, set with `priceTypeKey`: `adult`, `child`, `concession`,
+`senior` or `student`), sales windows, checkout tests, buyer sessions and booking, holder
+imports and the holder list, season orders, renewals (offers, quotes, intents, checkouts and
+hosted renewal links), date changes and cancellations, season seats, bulk refunds with their
+jobs, sales and seat reports, CSV exports, audit and support export. The bulk refund of a
+cancelled date is `refundSeasonPerformance`, the release of every lapsed renewal offer's seats
+is `releaseSeasonLapsedOffers`, and their jobs are read with `listSeasonBulkJobs` and
+`retrieveSeasonBulkJob`.
 
-After the test hold/book/cancel journey and matching webhook deliveries,
-`validateSeasonBuyerRehearsal($seasonKey)` sends no evidence body; SeatLayer
-discovers the retained chain automatically. Retrieved Season holds contain
-inventory identity, not an authoritative amount. Your platform owns package
-price, payment, order, tax, refunds, benefits, and ticket or pass delivery.
+Before you open sales, run one test hold, booking and cancellation with their
+webhooks, then call `validateSeasonBuyerRehearsal($seasonKey)`. It finds those
+test records itself, so it takes no body. With your own checkout, until a test like this or a checkout test has passed, opening sales answers with a `checkout_test_missing` warning. A
+season hold lists each date's seat, category and quantity but no price: when you
+run your own checkout, you set the package price and take the payment, and you
+issue the tickets.
 
 ```php
 $checked = $seatlayer->seasons->validateSeason([
@@ -104,10 +106,11 @@ $draft = $seatlayer->seasons->createSeason([
 $activation = $seatlayer->seasons->activateSeason($draft['key'], $draft['revision']);
 ```
 
-Treat `202` as accepted work and poll `retrieveSeasonLifecycle()` with the
-returned operation identity. Buyer-session minting and domain-exact booking,
-cancellation, and renewal actions remain single-attempt; only declared
-header-replay catalogue mutations retry automatically.
+A `202` answer means the work was accepted and is still running: keep the returned
+operation id and poll `retrieveSeasonLifecycle()` until it finishes. Bookings,
+cancellations and renewal commits are sent once and never retried by the SDK, so
+give each one your own stable id; sending the same id again is safe. A buyer session is sent once too, and repeating it is not safe: if its answer is lost, revoke
+what was created and create one new session.
 
 Above 100 contracts, `createSeasonRenewalOffers()` answers `202` with a `renewal_run` `job`
 and its `batchId` instead of `offers`; above 100 holders, `createSeasonHolderImportFromSeason()`
@@ -341,9 +344,8 @@ $session = $seatlayer->sessions->createManageSession(
 
 `capabilities` is **required** by this SDK even though the raw API safely defaults an omitted list
 to view-only (`event:view`). Keeping the argument required makes browser authority visible at every
-call site. Grant the smallest set the page needs. For Platform/SDK events, `event:cancel` returns a
-booking's inventory to sale but does not move gateway money; eligible Managed Ticketing refunds use
-the separate `event:refund` capability.
+call site. Grant the smallest set the page needs. `event:cancel` puts a booking back on sale; it
+does not refund anyone. To refund an order that SeatLayer's checkout took, grant `event:refund`.
 
 The same pattern embeds the Designer in your own UI:
 
@@ -499,7 +501,7 @@ occurrence, holder, order, reporting, outbox, and support operations.
 | `webhooks` | `list` `create` `update` `delete` `listDeliveries` |
 | `workspaces` | `list` `create` `retrieve` `update` |
 | `performanceGroups` | `list` `create` `retrieve` `delete` `activate` `close` `retrieveLifecycle` `createBuyerAccessSession` `listBuyerAccessSessions` `revokeBuyerAccessSession` `retrieveHold` `bookHold` `retrieveBooking` |
-| `seasons` | 87 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
+| `seasons` | 90 operations for catalogue and Plan lifecycle, performances and packages, package prices, checkout tests, sales windows, buyer access and booking, holder imports, holders, season orders, renewals, hosted renewals and renewal checkouts, occurrence amendments, returns and reclaims, bulk refunds, lapsed-offer releases and jobs, reports and CSV exports, audit, outbox, and support export |
 
 Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/)
 
@@ -536,12 +538,11 @@ outcome before trying again.
 
 ### Can I use my own payment provider?
 
-Yes. This server SDK does not process payment in a Platform/SDK integration. Inspect the hold,
-compute the charge from each returned item's authoritative `unitPrice`, `quantity`, and `currency`,
-take the money through whichever provider you already use, and then book the hold with your order
-id as `bookingRef`. SeatLayer owns seating state, holds, booking concurrency, and the inventory
-ledger in this integration; your platform owns payments, commercial orders, tickets, delivery,
-and refunds. Managed Ticketing is a separate product path with organizer-connected payments.
+Yes. Nothing in this SDK takes a payment: your server charges the hold's total through the provider
+you already use, then books the seats with your order id as `bookingRef`, and SeatLayer never
+touches the money. If you would rather SeatLayer run the checkout for an event
+(`$seatlayer->events->replaceEventBuyerCheckout()`), buyers pay through one of 14 payment gateways,
+including Stripe, PayPal and Square, straight into your own account.
 
 ## Continue your PHP integration
 
