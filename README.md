@@ -4,7 +4,7 @@
 [![Packagist](https://img.shields.io/packagist/v/seatlayer/seatlayer-php.svg)](https://packagist.org/packages/seatlayer/seatlayer-php)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE)
 
-`composer require seatlayer/seatlayer-php` gives a Laravel, Symfony or plain PHP 8.1 app SeatLayer's
+`composer require seatlayer/seatlayer-php` gives a Laravel, Symfony or plain PHP app on PHP 8.1 or newer SeatLayer's
 official API client for reserved seating. Read a buyer's held seats with their real prices, book
 them under your order id, sell at the box office and run season tickets and renewals, without adding
 a single Composer dependency.
@@ -432,7 +432,7 @@ support requests.
 ## Reliability
 
 **Retries and idempotency.** Reads (`GET`/`HEAD`) retry connection failures, 408, 429 and 5xx with
-exponential backoff and full jitter; `Retry-After` wins when the server sends it. Forty-one
+exponential backoff and full jitter; `Retry-After` wins when the server sends it. Forty-three
 mutations use exact header replay:
 
 - `charts->create`, `charts->copy`, `templates->instantiateTemplate`, `events->create`,
@@ -444,7 +444,7 @@ mutations use exact header replay:
   `replaceSeasonPackagePrices`, `createSeasonCheckoutTest`, `createSeasonHolderImport`,
   `createSeasonHolderImportFromSeason`, `createSeasonRenewalOffers`, `createSeasonAmendment`,
   `refundSeasonOrder`, `cancelSeasonOrder`, `cancelSeasonOrderDate`,
-  `refundSeasonPerformance`, `releaseSeasonLapsedOffers`, and `createSeasonRenewalCheckout`;
+  `refundSeasonPerformance`, `releaseSeasonLapsedOffers`, `createSeasonRenewalCheckout`, `setAsideSeasonBlock`, and `releaseSeasonBlock`;
 - `holders->updateHolder`, `holders->createHolderTransfer`, `holders->createHolderReturn`,
   `holders->createHolderRenewalCheckout`, `orders->refundEventOrder`, `orders->cancelEventOrder`, `eventSeries->createEventSeries`,
   `eventSeries->addEventSeriesDates`, and `eventSeries->updateEventSeries`.
@@ -537,19 +537,19 @@ Create a client with your secret key, read the buyer's hold with
 `$seatlayer->inventory->retrieveHold()` to get the real seats and prices, take the payment, then
 call `$seatlayer->inventory->book($eventKey, holdId: ..., bookingRef: ...)` with your own order id
 as `bookingRef`. For phone orders, the box office and comps,
-`$seatlayer->inventory->bookBestAvailable()` picks and books the best seats in one call, with no
+`$seatlayer->inventory->bookBestAvailable()` picks and books the best available seats in one call, with no
 browser involved. Keep that `bookingRef` for the order: it finds the booking again in
 `$seatlayer->inventory->listBookings()` and cancels it with `$seatlayer->inventory->unbook()`.
 
 ### How do I stop two buyers taking the same seat?
 
-In the SeatLayer picker, a buyer's seats are held when they go to checkout; with the bare chart,
-your code calls hold. The hold keeps those seats for that buyer for a set time, which you can change
-per event, and every other buyer sees them taken at once. Your server reads the hold with
+In the SeatLayer picker, a buyer's seats are held when they go to checkout; with the headless `SeatingChart`, your page calls `hold()`. The hold keeps those seats for that buyer for a set time, which you can change
+per event, and every other buyer sees them taken. Your server reads the hold with
 `$seatlayer->inventory->retrieveHold()`, charges from the prices it returns rather than anything the
 browser sent, and books it; `$seatlayer->inventory->extendHold()` gives a slow checkout more time
-without letting the seats go. If a booking call times out, send it again with the same hold and the
-same `bookingRef`: seats already booked under that reference are never sold twice.
+without letting the seats go. If a booking call times out, check `$seatlayer->inventory->listBookings()` for that `bookingRef`, or repeat the exact same
+booking with the same hold and `bookingRef`: seats already booked under it are not sold again,
+though the repeat can return an empty booked list.
 
 ### Can I use my own payment provider?
 
