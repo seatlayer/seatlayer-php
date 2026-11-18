@@ -1,15 +1,13 @@
-# SeatLayer PHP Server SDK for Reserved Seating
+# SeatLayer PHP SDK: seat booking, reserved seating and season ticket API
 
 [![CI](https://github.com/seatlayer/seatlayer-php/actions/workflows/ci.yml/badge.svg)](https://github.com/seatlayer/seatlayer-php/actions/workflows/ci.yml)
 [![Packagist](https://img.shields.io/packagist/v/seatlayer/seatlayer-php.svg)](https://packagist.org/packages/seatlayer/seatlayer-php)
 [![License: MIT](https://img.shields.io/badge/license-MIT-111827.svg)](LICENSE)
 
-The official PHP client for the SeatLayer API. `seatlayer/seatlayer-php` lets a PHP or Laravel backend inspect seat holds, price orders from server data, book reserved seats and verify webhooks, with no Composer dependencies. SeatLayer is seating chart and reserved-seat ticketing software built for venues up to stadium scale.
-
-SeatLayer's official PHP server SDK is the trusted side of its reserved seating and seat booking
-API. Inspect what a hold really contains, price from server-owned seating-chart data, and book
-with a stable `bookingRef`, while managing charts, events, inventory, allocations, and webhooks
-through one typed ticketing API client.
+`composer require seatlayer/seatlayer-php` gives a Laravel, Symfony or plain PHP 8.1 app SeatLayer's
+official API client for reserved seating. Read a buyer's held seats with their real prices, book
+them under your order id, sell at the box office and run season tickets and renewals, without adding
+a single Composer dependency.
 
 [`seatlayer/seatlayer-php` on Packagist](https://packagist.org/packages/seatlayer/seatlayer-php) ·
 [PHP server SDK guide](https://docs.seatlayer.io/server-sdk/php/) ·
