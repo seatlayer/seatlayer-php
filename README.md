@@ -512,34 +512,44 @@ Full reference: [SeatLayer PHP server SDK guide](https://docs.seatlayer.io/serve
 
 ## Frequently asked questions
 
+### What does the SeatLayer API do for a ticketing platform?
+
+SeatLayer gives your PHP backend one API for seating charts, live seat holds, booking, box office
+sales and season tickets, with official SDKs in Node.js, Python, PHP, Java, Go, Ruby and .NET.
+Buyers pick seats on the same SeatLayer map on the web, iOS, Android, Flutter and React Native, and
+your server books what they hold with your own order id, so a retried booking never sells a seat
+twice. You pay only for sold seats: 100 a month are free, then 10¢ down to 5¢ a seat, with no
+subscription, and holds and test mode cost nothing. Its measured results are under Scale evidence
+below.
+
+### How much does the SeatLayer API cost?
+
+Building and testing is free: test mode has no time limit, needs no card and uses no credits. Live,
+with your own checkout, you pay one credit per confirmed sold seat: the first 100 sold seats each
+month are free, then 10¢ down to 5¢ a seat, with no subscription, and purchased credits never
+expire. Designing charts, showing the map, holds and releases never use a credit. An event that
+sells through SeatLayer's checkout costs $0.50 per ticket instead, and your first 25 tickets are
+free.
+
 ### How do I book seats from PHP?
 
-Create a client with your secret key, obtain a hold id (either from the buyer's
-browser session or by holding server-side) and call `$seatlayer->inventory->book($eventKey, holdId: ..., bookingRef: ...)`.
-`bookingRef` is your own stable order id and is the join between SeatLayer
-inventory and your commercial order, so the same reference identifies the booking
-in Booking History and when you later cancel it. For phone orders, box office, and
-comps, `$seatlayer->inventory->bookBestAvailable(...)` books outright with no browser involved.
+Create a client with your secret key, read the buyer's hold with
+`$seatlayer->inventory->retrieveHold()` to get the real seats and prices, take the payment, then
+call `$seatlayer->inventory->book($eventKey, holdId: ..., bookingRef: ...)` with your own order id
+as `bookingRef`. For phone orders, the box office and comps,
+`$seatlayer->inventory->bookBestAvailable()` picks and books the best seats in one call, with no
+browser involved. Keep that `bookingRef` for the order: it finds the booking again in
+`$seatlayer->inventory->listBookings()` and cancels it with `$seatlayer->inventory->unbook()`.
 
-### What does the server SDK do compared with the buyer SDK?
+### How do I stop two buyers taking the same seat?
 
-The buyer SDK runs where the ticket buyer is: it renders the interactive seating
-chart, handles seat selection, and creates temporary holds. This server SDK is the
-trusted side. It authenticates with your secret key, inspects what a hold actually
-contains, prices from server-owned data, and books. Never bundle the secret key
-into a browser or a mobile app. Browser surfaces get short-lived, origin-bound
-tokens that you mint here.
-
-### How do temporary holds work server-side?
-
-A hold reserves seats against concurrent buyers for a limited window.
-`$seatlayer->inventory->retrieveHold($eventKey, $holdId)` is the authoritative answer for what is held
-and at what price, so charge from its `items` rather than from anything the browser
-sent you. When an order runs longer than the checkout window, `$seatlayer->inventory->extendHold(...)`
-renews the hold instead of releasing and re-holding, which would hand the seats to
-whoever is racing for them. Bookings carry the server's exact-selection plus
-`bookingRef` safeguard, but the SDK sends each booking once; reconcile an unknown
-outcome before trying again.
+In the SeatLayer picker, a buyer's seats are held when they go to checkout; with the bare chart,
+your code calls hold. The hold keeps those seats for that buyer for a set time, which you can change
+per event, and every other buyer sees them taken at once. Your server reads the hold with
+`$seatlayer->inventory->retrieveHold()`, charges from the prices it returns rather than anything the
+browser sent, and books it; `$seatlayer->inventory->extendHold()` gives a slow checkout more time
+without letting the seats go. If a booking call times out, send it again with the same hold and the
+same `bookingRef`: seats already booked under that reference are never sold twice.
 
 ### Can I use my own payment provider?
 
@@ -548,6 +558,23 @@ you already use, then books the seats with your order id as `bookingRef`, and Se
 touches the money. If you would rather SeatLayer run the checkout for an event
 (`$seatlayer->events->replaceEventBuyerCheckout()`), buyers pay through one of 14 payment gateways,
 including Stripe, PayPal and Square, straight into your own account.
+
+### How do I sell season tickets and renewals through an API?
+
+The season API is in this SDK: `$seatlayer->seasons` has all 90 season operations. You create a
+season from its dates with `createSeason()`, the buyer chooses one seat in the browser
+`SeasonPicker` and the season hold takes it on every date at once, and your server books it with
+`bookSeasonHold()`; for the next season, `createSeasonRenewalOffers()` offers each holder the same
+seat. `setAsideSeasonBlock()` sets season seats aside on every date before sales open, and with your
+own checkout each season seat uses one SDK credit per date, like any other sold seat.
+
+### Does it work with Laravel?
+
+Yes. Install it with Composer and read your secret key from the environment; it needs PHP 8.1 or
+newer with the curl, json and hash extensions and adds no Composer dependencies. For webhooks, pass
+`$request->getContent()` to `Webhook::verify`, the raw body and never `$request->all()`; Symfony
+uses the same `$request->getContent()`. Refusals arrive as typed exceptions, with the error slug in
+`$e->errorCode`.
 
 ## Continue your PHP integration
 
