@@ -426,7 +426,7 @@ try {
 Every exception carries `status`, `errorCode`, `body`, and `requestId`. Quote the request id in
 support requests.
 
-> **Naming note.** The error slug is `$e->errorCode`, not `$e->code`, because PHP's base `Exception`
+> **Naming note.** The error code is `$e->errorCode`, not `$e->code`, because PHP's base `Exception`
 > already owns `$code` as an int. Other SeatLayer SDKs expose the same value as `code`.
 
 ## Reliability
@@ -573,7 +573,7 @@ own checkout each season seat uses one SDK credit per date, like any other sold 
 Yes. Install it with Composer and read your secret key from the environment; it needs PHP 8.1 or
 newer with the curl, json and hash extensions and adds no Composer dependencies. For webhooks, pass
 `$request->getContent()` to `Webhook::verify`, the raw body and never `$request->all()`; Symfony
-uses the same `$request->getContent()`. Refusals arrive as typed exceptions, with the error slug in
+uses the same `$request->getContent()`. Refusals arrive as typed exceptions, with the error code in
 `$e->errorCode`.
 
 ## Continue your PHP integration
